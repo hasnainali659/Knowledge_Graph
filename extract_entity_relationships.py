@@ -68,7 +68,6 @@ NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD_1')
 
 neo4j_connection = Neo4jConnection(NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD)
 
-# create a root node name 'resume'
 resume_query = """MERGE (r:Resume {name: 'resume'}) RETURN r"""
 
 resume_query_parameters = {
@@ -77,7 +76,6 @@ resume_query_parameters = {
 
 neo4j_connection.write_transaction(resume_query, resume_query_parameters)
 
-#create a node for file name and link it to the resume node
 file_query = """MERGE (f:File {name: $name}) RETURN f"""
 
 file_query_parameters = {
@@ -86,31 +84,13 @@ file_query_parameters = {
 
 neo4j_connection.write_transaction(file_query, file_query_parameters)
 
-# make a relationship between the file node and the resume node
 relationship_query = """MATCH (r:Resume), (f:File) WHERE r.name = 'resume' AND f.name = 'Bob Smith 1.pdf' CREATE (f)-[:BELONGS_TO]->(r) RETURN r, f"""
 
 neo4j_connection.write_transaction(relationship_query)
 
-# # create a node for each entity and make a relationship between the entity node and the file node
-# for entity in entities:
-#     entity_query = """MERGE (e:Entity {name: $name}) RETURN e"""
-#     entity_query_parameters = {
-#         'name': entity
-#     }
-#     neo4j_connection.write_transaction(entity_query, entity_query_parameters)
-
-# # make a relationship between the entity node and the file node
-# for relationship in relationships:
-#     relationship_query = """MATCH (e:Entity), (f:File) WHERE e.name = $entity AND f.name = 'Bob Smith 1.pdf' CREATE (e)-[:HAS_RELATIONSHIP]->(f) RETURN e, f"""
-#     relationship_query_parameters = {
-#         'entity': relationship
-#     }
-#     neo4j_connection.write_transaction(relationship_query, relationship_query_parameters)
-
 for cypher_query in cypher_queries:
     neo4j_connection.write_transaction(cypher_query)
 
-# create a relationship between the root entity node and the file node for e.g 'Bob Smith' and 'Bob Smith 1.pdf'
 root_entity_query = """MATCH (b { name: $root_entity_name }), (f { name: $file_name }) CREATE (b)-[:HAS_FILE]->(f) RETURN b, f"""
 
 root_entity_query_parameters = {
