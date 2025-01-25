@@ -21,6 +21,7 @@ class ResumeContentSchema(BaseModel):
     entities: list[str] = Field(default=[], description="The list of entities in the resume")
     relationships: list[str] = Field(default=[], description="The list of relationships between entities in the resume")
     cypher_queries: list[str] = Field(default=[], description="The list of cypher queries to create the knowledge graph")
+    root_entity_name: str = Field(default='', description="The name of the root entity. For e.g 'Bob Smith'")
 
     
 llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
@@ -34,7 +35,8 @@ output format example:
 {{
     'entities': ['Bob Smith', 'John Doe', 'Jane Doe', 'University of California, Los Angeles', 'Google', 'Software Engineer', 'Python', 'Java', 'SQL'],
     'relationships':['HAS_EDUCATION', 'HAS_EXPERIENCE', 'HAS_SKILLS', 'LIVES_IN', 'WORKS_AT'],
-    'cypher_queries': ['MERGE (e:Entity {{name: $name}}) RETURN e', 'MERGE (r:Relationship {{name: $name}}) RETURN r']
+    'cypher_queries': ['MERGE (e:Entity {{name: $name}}) RETURN e', 'MERGE (r:Relationship {{name: $name}}) RETURN r'],
+    'root_entity_name': 'Bob Smith'
 }}
 
 resume:
@@ -56,6 +58,9 @@ except OutputParserException:
 entities = parsed_response.entities
 relationships = parsed_response.relationships
 cypher_queries = parsed_response.cypher_queries
+root_entity_name = parsed_response.root_entity_name
+
+print(root_entity_name)
 
 NEO4J_URI = os.getenv('NEO4J_URI_1')
 NEO4J_USERNAME = os.getenv('NEO4J_USERNAME_1')
@@ -105,5 +110,13 @@ neo4j_connection.write_transaction(relationship_query)
 for cypher_query in cypher_queries:
     neo4j_connection.write_transaction(cypher_query)
 
+# create a relationship between the root entity node and the file node for e.g 'Bob Smith' and 'Bob Smith 1.pdf'
+root_entity_query = """MATCH (b { name: $root_entity_name }), (f { name: $file_name }) CREATE (b)-[:HAS_FILE]->(f) RETURN b, f"""
 
+root_entity_query_parameters = {
+    'root_entity_name': root_entity_name,
+    'file_name': 'Bob Smith 1.pdf'
+}
+
+neo4j_connection.write_transaction(root_entity_query, root_entity_query_parameters)
 
