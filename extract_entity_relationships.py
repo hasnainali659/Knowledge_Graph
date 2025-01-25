@@ -20,8 +20,6 @@ with open(path, 'rb') as file:
 class ResumeContentSchema(BaseModel):
     entities: list[str] = Field(default=[], description="The list of entities in the resume")
     relationships: list[str] = Field(default=[], description="The list of relationships between entities in the resume")
-    file_name: str = Field(default='', description="The name of the file")
-    doc_class: str = Field(default='', description="The class of the document")
     cypher_queries: list[str] = Field(default=[], description="The list of cypher queries to create the knowledge graph")
 
     
@@ -29,15 +27,8 @@ llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
 parser = PydanticOutputParser(pydantic_object=ResumeContentSchema)
 
 template = """
-You are a resume parser. You are given a resume, the name of the file, the class of the document and you need to extract entities, relationships and cypher
+You are a resume parser. You are given a resume and you need to extract entities, relationships and cypher
 queries to create a knowledge graph.
-
-The class of the document is {doc_class}.
-The name of the file is {file_name}.
-
-First create a cypher query to create a root node named 'resume'. 
-Then create a cypher query to create a node for the file name and link it to the resume node. via the relationship 'BELONGS_TO'.
-Then create a cypher query to create a node for each entity and link it to the file node.
 
 output format example:
 {{
@@ -52,7 +43,7 @@ resume:
 
 prompt = PromptTemplate(template=template)
 chain = prompt | llm
-response = chain.invoke({"text": full_text, "doc_class": "resume", "file_name": "Bob Smith 1.pdf"})
+response = chain.invoke({"text": full_text})
 
 response_content = response.content if hasattr(response, 'content') else response
 
@@ -73,27 +64,27 @@ NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD_1')
 neo4j_connection = Neo4jConnection(NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD)
 
 # create a root node name 'resume'
-# resume_query = """MERGE (r:Resume {name: 'resume'}) RETURN r"""
+resume_query = """MERGE (r:Resume {name: 'resume'}) RETURN r"""
 
-# resume_query_parameters = {
-#     'name': 'resume'
-# }
+resume_query_parameters = {
+    'name': 'resume'
+}
 
-# neo4j_connection.write_transaction(resume_query, resume_query_parameters)
+neo4j_connection.write_transaction(resume_query, resume_query_parameters)
 
-# #create a node for file name and link it to the resume node
-# file_query = """MERGE (f:File {name: $name}) RETURN f"""
+#create a node for file name and link it to the resume node
+file_query = """MERGE (f:File {name: $name}) RETURN f"""
 
-# file_query_parameters = {
-#     'name': 'Bob Smith 1.pdf'
-# }
+file_query_parameters = {
+    'name': 'Bob Smith 1.pdf'
+}
 
-# neo4j_connection.write_transaction(file_query, file_query_parameters)
+neo4j_connection.write_transaction(file_query, file_query_parameters)
 
-# # make a relationship between the file node and the resume node
-# relationship_query = """MATCH (r:Resume), (f:File) WHERE r.name = 'resume' AND f.name = 'Bob Smith 1.pdf' CREATE (f)-[:BELONGS_TO]->(r) RETURN r, f"""
+# make a relationship between the file node and the resume node
+relationship_query = """MATCH (r:Resume), (f:File) WHERE r.name = 'resume' AND f.name = 'Bob Smith 1.pdf' CREATE (f)-[:BELONGS_TO]->(r) RETURN r, f"""
 
-# neo4j_connection.write_transaction(relationship_query)
+neo4j_connection.write_transaction(relationship_query)
 
 # # create a node for each entity and make a relationship between the entity node and the file node
 # for entity in entities:
