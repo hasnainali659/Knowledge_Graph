@@ -33,17 +33,88 @@ def process_resume(pdf_path: str):
     You are a resume parser. You are given a resume and you need to extract entities, 
     relationships, and cypher queries to create a knowledge graph.
 
-    output format example:
+    Use the following output format as a guide:
     {{
-        'entities': ['Bob Smith', 'John Doe', 'Jane Doe', 'University of California, Los Angeles', 'Google', 'Software Engineer', 'Python', 'Java', 'SQL'],
-        'relationships': ['HAS_EDUCATION', 'HAS_EXPERIENCE', 'HAS_SKILLS', 'LIVES_IN', 'WORKS_AT'],
-        'cypher_queries': ['MERGE (e:Entity {{name: $name}}) RETURN e', 'MERGE (r:Relationship {{name: $name}}) RETURN r'],
-        'root_entity_name': 'Bob Smith'
+        'entities': [...],
+        'relationships': [...],
+        'cypher_queries': [...],
+        'root_entity_name': '...'
     }}
 
-    resume:
+    Below are examples demonstrating the expected behavior:
+
+    Example 1:
+    ----------------------------------
+    Resume:
+    "My name is Alice Johnson. I have a Bachelor of Science in Computer Science from the University of Texas. 
+    I worked at IBM as a Data Scientist. My skill set includes Python, Machine Learning, and Data Analysis."
+    Expected Output:
+    {{
+        'entities': ['Alice Johnson', 'University of Texas', 'IBM', 'Data Scientist', 'Python', 'Machine Learning', 'Data Analysis'],
+        'relationships': ['HAS_EDUCATION', 'HAS_EXPERIENCE', 'HAS_SKILLS'],
+        'cypher_queries': [
+            "MERGE (person:Entity {{name: 'Alice Johnson'}}) RETURN person",
+            "MERGE (school:Entity {{name: 'University of Texas'}}) RETURN school",
+            "MERGE (company:Entity {{name: 'IBM'}}) RETURN company",
+            "MERGE (role:Entity {{name: 'Data Scientist'}}) RETURN role",
+            "MERGE (skill1:Entity {{name: 'Python'}}) RETURN skill1",
+            "MERGE (skill2:Entity {{name: 'Machine Learning'}}) RETURN skill2",
+            "MERGE (skill3:Entity {{name: 'Data Analysis'}}) RETURN skill3",
+            "MATCH (person:Entity {{name: 'Alice Johnson'}}), (school:Entity {{name: 'University of Texas'}}) MERGE (person)-[:HAS_EDUCATION]->(school)",
+            "MATCH (person:Entity {{name: 'Alice Johnson'}}), (company:Entity {{name: 'IBM'}}) MERGE (person)-[:HAS_EXPERIENCE]->(company)",
+            "MATCH (person:Entity {{name: 'Alice Johnson'}}), (role:Entity {{name: 'Data Scientist'}}) MERGE (person)-[:HAS_EXPERIENCE]->(role)",
+            "MATCH (person:Entity {{name: 'Alice Johnson'}}), (skill1:Entity {{name: 'Python'}}) MERGE (person)-[:HAS_SKILLS]->(skill1)",
+            "MATCH (person:Entity {{name: 'Alice Johnson'}}), (skill2:Entity {{name: 'Machine Learning'}}) MERGE (person)-[:HAS_SKILLS]->(skill2)",
+            "MATCH (person:Entity {{name: 'Alice Johnson'}}), (skill3:Entity {{name: 'Data Analysis'}}) MERGE (person)-[:HAS_SKILLS]->(skill3)"
+        ],
+        'root_entity_name': 'Alice Johnson'
+    }}
+    ----------------------------------
+
+    Example 2:
+    ----------------------------------
+    Resume:
+    "I am Bob Smith, living in San Francisco. I graduated with a Master's in Data Science from Stanford University, 
+    and I have experience at Google as a Machine Learning Engineer. I am proficient in Python, C++, and SQL."
+    Expected Output:
+    {{
+        'entities': ['Bob Smith', 'San Francisco', 'Stanford University', 'Google', 'Machine Learning Engineer', 'Python', 'C++', 'SQL'],
+        'relationships': ['LIVES_IN', 'HAS_EDUCATION', 'HAS_EXPERIENCE', 'HAS_SKILLS'],
+        'cypher_queries': [
+            "MERGE (person:Entity {{name: 'Bob Smith'}}) RETURN person",
+            "MERGE (city:Entity {{name: 'San Francisco'}}) RETURN city",
+            "MERGE (university:Entity {{name: 'Stanford University'}}) RETURN university",
+            "MERGE (company:Entity {{name: 'Google'}}) RETURN company",
+            "MERGE (role:Entity {{name: 'Machine Learning Engineer'}}) RETURN role",
+            "MERGE (skill1:Entity {{name: 'Python'}}) RETURN skill1",
+            "MERGE (skill2:Entity {{name: 'C++'}}) RETURN skill2",
+            "MERGE (skill3:Entity {{name: 'SQL'}}) RETURN skill3",
+            "MATCH (person:Entity {{name: 'Bob Smith'}}), (city:Entity {{name: 'San Francisco'}}) MERGE (person)-[:LIVES_IN]->(city)",
+            "MATCH (person:Entity {{name: 'Bob Smith'}}), (university:Entity {{name: 'Stanford University'}}) MERGE (person)-[:HAS_EDUCATION]->(university)",
+            "MATCH (person:Entity {{name: 'Bob Smith'}}), (company:Entity {{name: 'Google'}}) MERGE (person)-[:HAS_EXPERIENCE]->(company)",
+            "MATCH (person:Entity {{name: 'Bob Smith'}}), (role:Entity {{name: 'Machine Learning Engineer'}}) MERGE (person)-[:HAS_EXPERIENCE]->(role)",
+            "MATCH (person:Entity {{name: 'Bob Smith'}}), (skill1:Entity {{name: 'Python'}}) MERGE (person)-[:HAS_SKILLS]->(skill1)",
+            "MATCH (person:Entity {{name: 'Bob Smith'}}), (skill2:Entity {{name: 'C++'}}) MERGE (person)-[:HAS_SKILLS]->(skill2)",
+            "MATCH (person:Entity {{name: 'Bob Smith'}}), (skill3:Entity {{name: 'SQL'}}) MERGE (person)-[:HAS_SKILLS]->(skill3)"
+        ],
+        'root_entity_name': 'Bob Smith'
+    }}
+    ----------------------------------
+
+    Now, using the same approach and the same output format structure, parse the following resume text into its relevant entities, relationships, 
+    and cypher queries. Make sure to assign the 'root_entity_name' to the candidate's name. 
+    Focus on the following categories (if present) to derive entities and relationships: 
+    - Person Name
+    - Education (Universities or Degrees)
+    - Work Experience (Companies and Job Titles)
+    - Skills (Technical or Domain-Specific)
+    - Location or Residence
+    - Others (Certifications, Awards, etc.)
+
+    Resume:
     {text}
     """
+
     
     prompt = PromptTemplate(template=template)
     chain = prompt | llm
@@ -106,5 +177,5 @@ def process_resume(pdf_path: str):
     print(f"Finished processing {file_name} into the Neo4j graph.")
 
 if __name__ == "__main__":
-    pdf_path = "docs/George Kim 1.pdf"
+    pdf_path = "docs/Hasnain Ali Resume.pdf"
     process_resume(pdf_path)
