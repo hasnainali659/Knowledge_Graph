@@ -10,6 +10,7 @@ from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_community.graphs import Neo4jGraph
 from langchain_experimental.graph_transformers import LLMGraphTransformer
 from langchain_community.chains.graph_qa.cypher import GraphCypherQAChain
+from langchain_core.output_parsers import StrOutputParser
 from neo4j import GraphDatabase
 
 load_dotenv()
@@ -19,46 +20,54 @@ def get_all_nodes():
         result = session.run("MATCH (n) RETURN n")
         nodes = [record["n"]._properties["name"] for record in result]
         return nodes
+
+def get_relationships_for_node(node_name):
+    query = """
+        MATCH (n {name: $node_name})-[r]-(m)
+        RETURN n, r, m
+    """
+    with driver.session() as session:
+        result = session.run(query, node_name=node_name)
+        
+        records = []
+        relationships = []
+        for record in result:
+            records.append({
+                "node": record["n"],
+                "relationship": record["r"],
+                "connected_node": record["m"]
+            })
+            relationships.append(record[1].type)
+        return records, relationships
     
-def rephrase_query_chain(query, nodes):
+def extract_main_node_chain(query, nodes):
     llm = ChatOpenAI(model="gpt-4o", temperature=0)
     prompt = PromptTemplate(
-        template=""" You are a highly skilled assistant that specializes in rephrasing user queries to match the names (exact case) of relevant nodes in a graph database. 
-
-        Your task:
-        1. You are given a list of all possible nodes in the database.
-        2. You are given the user's query.
-        3. You must rephrase the query so that any references to a node are replaced with the exact node name (maintaining the correct case) from the provided list.
-        4. Ensure the essential meaning and intent of the user’s query remains the same.
-        5. If no node in the list is relevant, leave the query as-is.
-        6. When multiple nodes seem relevant, select the single best match that most closely aligns with the user’s context or question.
-
-        Key points:
-        - Maintain correct casing and spelling of nodes exactly as they appear in the list.
-        - Only replace references that clearly map to a node in the list.
-        - Do not fabricate nodes or alter other parts of the query unnecessarily.
-        - Make sure the final rephrased query is concise, clear, and grammatically correct.
-
-        Below are some examples:
-
-        Example 1:
-        - Query: "Who has certification in python programming?"
-        - List of all nodes: ['Python', 'Machine Learning', 'Data Analysis', 'Programming in Python']
-        - Rephrased Query: "Who has certification in Programming in Python?"
-
-        Example 2:
-        - Query: "Is there any course on machine learning?"
-        - List of all nodes: ['Machine Learning', 'Deep Learning', 'Introduction to AI']
-        - Rephrased Query: "Is there any course on Machine Learning?"
-
-        Example 3:
-        - Query: "Do we have any advanced data analysis projects?"
-        - List of all nodes: ['Data Analysis', 'Data Engineering', 'Advanced Data Analysis Methods']
-        - Rephrased Query: "Do we have any advanced Data Analysis projects?"
-
-        Now, apply these instructions to the real data:
-
+        template=""" You are a highly skilled assistant that specializes in extracting the main node from a query.
+        You are given a query and a list of all nodes in the graph database.
+        You need to extract the main node from the query.
+        The main node is the node that is most relevant to the query.
+        
+        Note: Only return the name of the node.
+        
+        Query: {query}
         List of all nodes: {nodes}
+        
+        Main node:
+        """
+    )
+    
+    chain = prompt | llm | StrOutputParser()
+    return chain.invoke({"query": query, "nodes": nodes})
+    
+def rephrase_query_chain(query, main_node, relationships):
+    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    prompt = PromptTemplate(
+        template=""" You are a highly skilled assistant that specializes in rephrasing user queries using the main node and the relationships of the main node in the graph database. 
+
+        The rephrased query should include the main node and the relevant relationship of the main node.
+
+        List of relationships: {relationships}
         Query: {query}
 
         Rephrased Query:
@@ -66,7 +75,7 @@ def rephrase_query_chain(query, nodes):
     )
     
     chain = prompt | llm
-    return chain.invoke({"nodes": nodes, "query": query})
+    return chain.invoke({"relationships": relationships, "query": query})
 
 graph = Neo4jGraph(
     url=os.getenv("NEO4J_URI_1"),
@@ -117,6 +126,10 @@ while True:
     question = input("Enter a question: ")
     if question in ["/q", "/quit", "/exit", "/stop", "/end", "/close", "/bye", "/goodbye", "/byebye", "/goodbyebye", "/goodbyecya"]:
         break
-    rephrased_query = rephrase_query_chain(question, list_of_all_nodes)
+    
+    main_node = extract_main_node_chain(question, list_of_all_nodes)
+    records, relationships = get_relationships_for_node(main_node)
+    
+    rephrased_query = rephrase_query_chain(question, main_node, relationships)
     result = qa.invoke({"query": rephrased_query.content})
     print(result["result"])
