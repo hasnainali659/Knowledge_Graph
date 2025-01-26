@@ -79,7 +79,7 @@ def process_resume(pdf_path: str):
     Expected Output:
     {{
         'entities': ['Bob Smith', 'San Francisco', 'Stanford University', 'Google', 'Machine Learning Engineer', 'Python', 'C++', 'SQL'],
-        'relationships': ['LIVES_IN', 'HAS_EDUCATION', 'HAS_EXPERIENCE', 'HAS_SKILLS'],
+        'relationships': ['LIVES_IN', 'HAS_EDUCATION', 'HAS_EXPERIENCE', 'HAS_SKILLS', 'HAS_PUBLICATIONS'],
         'cypher_queries': [
             "MERGE (person:Entity {{name: 'Bob Smith'}}) RETURN person",
             "MERGE (city:Entity {{name: 'San Francisco'}}) RETURN city",
@@ -89,13 +89,15 @@ def process_resume(pdf_path: str):
             "MERGE (skill1:Entity {{name: 'Python'}}) RETURN skill1",
             "MERGE (skill2:Entity {{name: 'C++'}}) RETURN skill2",
             "MERGE (skill3:Entity {{name: 'SQL'}}) RETURN skill3",
+            "MERGE (publication:Entity {{name: 'Machine Learning Engineer'}}) RETURN publication",
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (city:Entity {{name: 'San Francisco'}}) MERGE (person)-[:LIVES_IN]->(city)",
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (university:Entity {{name: 'Stanford University'}}) MERGE (person)-[:HAS_EDUCATION]->(university)",
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (company:Entity {{name: 'Google'}}) MERGE (person)-[:HAS_EXPERIENCE]->(company)",
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (role:Entity {{name: 'Machine Learning Engineer'}}) MERGE (person)-[:HAS_EXPERIENCE]->(role)",
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (skill1:Entity {{name: 'Python'}}) MERGE (person)-[:HAS_SKILLS]->(skill1)",
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (skill2:Entity {{name: 'C++'}}) MERGE (person)-[:HAS_SKILLS]->(skill2)",
-            "MATCH (person:Entity {{name: 'Bob Smith'}}), (skill3:Entity {{name: 'SQL'}}) MERGE (person)-[:HAS_SKILLS]->(skill3)"
+            "MATCH (person:Entity {{name: 'Bob Smith'}}), (skill3:Entity {{name: 'SQL'}}) MERGE (person)-[:HAS_SKILLS]->(skill3)",
+            "MATCH (person:Entity {{name: 'Bob Smith'}}), (publication:Entity {{name: 'Machine Learning Engineer'}}) MERGE (person)-[:HAS_PUBLICATIONS]->(publication)"
         ],
         'root_entity_name': 'Bob Smith'
     }}
