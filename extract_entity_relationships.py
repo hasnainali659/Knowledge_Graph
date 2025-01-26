@@ -179,5 +179,5 @@ def process_resume(pdf_path: str):
     print(f"Finished processing {file_name} into the Neo4j graph.")
 
 if __name__ == "__main__":
-    pdf_path = "docs/Hasnain Ali Resume.pdf"
+    pdf_path = "docs/Hasnain Ali Resume.pdf" 
     process_resume(pdf_path)
