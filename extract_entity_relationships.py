@@ -8,12 +8,18 @@ from langchain_core.exceptions import OutputParserException
 from pydantic import BaseModel, Field
 
 from main import Neo4jConnection
+from enum import Enum
 
-class ResumeContentSchema(BaseModel):
+class DocClass(Enum):
+    RESUME = "resume"
+    SCIENCE_ARTICLE = "science_article"
+    TECHNICAL_DOCUMENT = "technical_document"
+
+class ContentSchema(BaseModel):
     entities: list[str] = Field(default=[], description="The list of entities in the resume")
     relationships: list[str] = Field(default=[], description="The list of relationships between entities in the resume")
     cypher_queries: list[str] = Field(default=[], description="The list of cypher queries to create the knowledge graph")
-    root_entity_name: str = Field(default='', description="The name of the root entity. For e.g 'Bob Smith'")
+    root_entity_name: str = Field(default='', description="The name of the root entity. For e.g 'Bob Smith', 'Robotics Article'")
 
 def extract_text_from_pdf(pdf_path: str) -> str:
     full_text = ""
@@ -23,14 +29,14 @@ def extract_text_from_pdf(pdf_path: str) -> str:
             full_text += page.extract_text()
     return full_text
 
-def process_resume(pdf_path: str):
+def process_document(pdf_path: str, doc_class: str):
     full_text = extract_text_from_pdf(pdf_path)
     
     llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
-    parser = PydanticOutputParser(pydantic_object=ResumeContentSchema)
+    parser = PydanticOutputParser(pydantic_object=ContentSchema)
     
     template = """
-    You are a resume parser. You are given a resume and you need to extract entities, 
+    You are a document parser. You are given a document and the class of the document. You need to extract entities, 
     relationships, and cypher queries to create a knowledge graph.
 
     Use the following output format as a guide:
@@ -45,7 +51,7 @@ def process_resume(pdf_path: str):
 
     Example 1:
     ----------------------------------
-    Resume:
+    Document:
     "My name is Alice Johnson. I have a Bachelor of Science in Computer Science from the University of Texas. 
     I worked at IBM as a Data Scientist. My skill set includes Python, Machine Learning, and Data Analysis."
     Expected Output:
@@ -101,27 +107,81 @@ def process_resume(pdf_path: str):
         ],
         'root_entity_name': 'Bob Smith'
     }}
+    
+    Example 3:
+    Science Article:
+    "The article discusses the latest advancements in robotics, including the development of a new robotic arm that can perform complex tasks."
+    Expected Output:
+    {{
+        'entities': ['Robotics', 'Robotic Arm', 'Complex Tasks'],
+        'relationships': ['HAS_ADVANCES', 'HAS_DEVELOPMENT'],
+        'cypher_queries': [
+            "MERGE (article:Entity {{name: 'Robotics Article'}}) RETURN article",
+            "MERGE (advancement:Entity {{name: 'Robotics'}}) RETURN advancement",
+            "MERGE (arm:Entity {{name: 'Robotic Arm'}}) RETURN arm",
+            "MERGE (task:Entity {{name: 'Complex Tasks'}}) RETURN task"
+        ],
+        'root_entity_name': 'Robotics'
+    }}
+    
+    Example 4:
+    Technical Document:
+    "This Handbook is a comprehensive guide to the latest advancements in AI, including the development of a new AI model that can perform complex tasks.
+    AI is the future of the world."
+    Expected Output:
+    {{
+        'entities': ['AI', 'AI Model', 'Complex Tasks', 'Future of the World'],
+        'relationships': ['HAS_ADVANCES', 'HAS_DEVELOPMENT', 'HAS_IMPACT'],
+        'cypher_queries': [
+            "MERGE (document:Entity {{name: 'Handbook'}}) RETURN document",
+            "MERGE (advancement:Entity {{name: 'AI'}}) RETURN advancement",
+            "MERGE (model:Entity {{name: 'AI Model'}}) RETURN model",
+            "MERGE (impact:Entity {{name: 'Future of the World'}}) RETURN impact"
+        ],
+        'root_entity_name': 'AI'
+    }}
+    
     ----------------------------------
 
-    Now, using the same approach and the same output format structure, parse the following resume text into its relevant entities, relationships, 
-    and cypher queries. Make sure to assign the 'root_entity_name' to the candidate's name. 
+    Now, using the same approach and the same output format structure, parse the following document text into its relevant entities, relationships, 
+    and cypher queries. Make sure to assign the 'root_entity_name' to the main node that is the most representative of the document. 
     Focus on the following categories (if present) to derive entities and relationships: 
+    
+    FOR RESUME:
     - Person Name
     - Education (Universities or Degrees)
     - Work Experience (Companies and Job Titles)
     - Skills (Technical or Domain-Specific)
     - Location or Residence
     - Others (Certifications, Awards, etc.)
+    
+    FOR SCIENCE ARTICLE:
+    - Topic
+    - Subject
+    - Research
+    - Methodology
+    - Results
+    - Conclusion
 
-    Resume:
+    FOR TECHNICAL DOCUMENT:
+    - Topic
+    - Technical Details
+    - How it works
+    - How it is used
+    - Impact
+
+    Document:
     {text}
+    
+    Document Class:
+    {doc_class}
     """
 
     
     prompt = PromptTemplate(template=template)
     chain = prompt | llm
     
-    response = chain.invoke({"text": full_text})
+    response = chain.invoke({"text": full_text, "doc_class": doc_class})
     response_content = response.content if hasattr(response, 'content') else response
     
     try:
@@ -146,8 +206,8 @@ def process_resume(pdf_path: str):
 
     neo4j_connection = Neo4jConnection(NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD)
 
-    resume_query = """MERGE (r:Resume {name: 'resume'}) RETURN r"""
-    neo4j_connection.write_transaction(resume_query)
+    query = f"""MERGE (r:{doc_class} {{name: '{doc_class.lower()}'}}) RETURN r"""
+    neo4j_connection.write_transaction(query)
 
     file_name = os.path.basename(pdf_path)
     
@@ -155,8 +215,8 @@ def process_resume(pdf_path: str):
     file_query_params = {'file_name': file_name}
     neo4j_connection.write_transaction(file_query, file_query_params)
 
-    belongs_query = """
-        MATCH (r:Resume {name: 'resume'}), (f:File {name: $file_name})
+    belongs_query = f"""
+        MATCH (r:{doc_class} {{ name: '{doc_class.lower()}' }}), (f:File {{ name: $file_name }})
         MERGE (f)-[:BELONGS_TO]->(r) 
         RETURN r, f
     """
@@ -179,5 +239,6 @@ def process_resume(pdf_path: str):
     print(f"Finished processing {file_name} into the Neo4j graph.")
 
 if __name__ == "__main__":
-    pdf_path = "docs/Hasnain Ali Resume.pdf" 
-    process_resume(pdf_path)
+    pdf_path = "docs/engproc-20-00035.pdf" 
+    doc_class = DocClass.SCIENCE_ARTICLE.value
+    process_document(pdf_path, doc_class)

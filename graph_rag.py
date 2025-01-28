@@ -124,6 +124,8 @@ list_of_all_nodes = get_all_nodes()
 
 while True:
     question = input("Enter a question: ")
+    doc_class = input("Enter the class of the document: ['RESUME', 'SCIENCE_ARTICLE', 'TECHNICAL_DOCUMENT']")
+    
     if question in ["/q", "/quit", "/exit", "/stop", "/end", "/close", "/bye", "/goodbye", "/byebye", "/goodbyebye", "/goodbyecya"]:
         break
     
