@@ -239,6 +239,6 @@ def process_document(pdf_path: str, doc_class: str):
     print(f"Finished processing {file_name} into the Neo4j graph.")
 
 if __name__ == "__main__":
-    pdf_path = "docs/engproc-20-00035.pdf" 
+    pdf_path = "docs/Evaluation-of-ECG-based-Recognition-of-Cardiac-Abnormalities-using-Machine-Learning-and-Deep-Learning.pdf" 
     doc_class = DocClass.SCIENCE_ARTICLE.value
     process_document(pdf_path, doc_class)
