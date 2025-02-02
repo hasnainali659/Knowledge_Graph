@@ -75,33 +75,42 @@ def process_document(pdf_path: str, doc_class: str):
     parser = PydanticOutputParser(pydantic_object=ContentSchema)
     
     template = """
-    You are a document parser. You are given a document, class of the document and all relationships list.
-    You need to extract entities, relationships, and cypher queries to create a knowledge graph. 
+    You are a document parser. Your primary objective is to analyze the provided document and extract key components to construct
+    a knowledge graph. You will be given the following inputs:
     
-    All the previously extracted relationships are provided, so when creating new relationships,
-    make sure that relationship name ,if not present in the all_relationships list. Then only create the relationship with the new name.
-    
-    for e.g 
-    HAS_AUTHORED and AUTHORED_BY are the same relationship,
-    HAS_CONTRIBUTED and AUTHORED_BY are the same relationship,
-    
-    so if HAS_AUTHORED is already in the list of all_relationships, 
-    then you should not create AUTHORED_BY, instead you should use HAS_AUTHORED.
-    
-    Similarly, if HAS_CONTRIBUTED is already in the list of all_relationships,
-    then you should not create AUTHORED_BY, instead you should use HAS_CONTRIBUTED.
-    
-    Each node should be connected to the root entity node of the document via a relationship. No node should be left out.
-    
-    Extract as many entities and relationships as possible. Capture all the entities and relationships in the document.
-    
-    The cypher query connecting the nodes should be very logical and should be easy to understand.
-    
-    e.g 
-    NED University should be connected via relationship related to education/institution not by contribution.
-    Karachi should be connected via relationship related to location/residence not by institution.
+    - A document text (which could be a resume, science article, or technical document).
+    - The document class (which indicates the type or category of the document).
+    - A list of all previously extracted relationships (all_relationships). For first document, all_relationships will be empty.
 
-    Use the following output format as a guide:
+    Your task is to extract:
+    1. **Entities:** Key names, institutions, concepts, topics, skills, locations, etc.
+    2. **Relationships:** The connections between these entities. When determining a relationship, check the provided all_relationships list. 
+    If a similar relationship already exists (even if represented with different synonyms), use the existing relationship name.  
+    - *For example:*  
+        - **HAS_AUTHORED** and **AUTHORED_BY** are considered the same.  
+        - **HAS_CONTRIBUTED** and **AUTHORED_BY** are considered the same.  
+        - So, if **HAS_AUTHORED** is already in the all_relationships list, do not create **AUTHORED_BY**; instead, use **HAS_AUTHORED**.  
+        - Similarly, if **HAS_CONTRIBUTED** exists, do not generate **AUTHORED_BY**; use **HAS_CONTRIBUTED**.
+    3. **Cypher Queries:** Generate Cypher queries that logically connect the extracted entities. Each query should:
+    - Create or merge nodes for each entity.
+    - Create relationships connecting the nodes, ensuring every entity is linked to the designated root entity.
+    - Be written in a clear, easy-to-understand manner.
+    4. **Root Entity Name:** Identify and assign the main or most representative entity of the document as the root node. Every other entity should be connected directly or indirectly to this root.
+
+    **Important Guidelines:**
+    - **Comprehensiveness:** Extract as many entities and relationships as possible. Ensure no relevant piece of information is omitted.
+    - **Context Sensitivity:** 
+    - For resumes, focus on aspects like Person Name, Education (degrees or institutions), Work Experience (companies and job titles), Skills, Location, Certifications, Awards, etc.
+    - For science articles, look for Topic, Authors, Affiliations, Contributions, Novelty, Research methods, Methodology, Results, and Conclusion.
+    - For technical documents, capture the Topic, Technical Details, How it Works, Applications, and Impact.
+    - **Connection Logic:**  
+
+    - Every node must be connected to the root entity node via an appropriate relationship.
+    - For example, if "NED University" is mentioned, it should be connected with a relationship related to education or institution, not one meant for contributions.  
+    - Similarly, "Karachi" should be connected with a relationship related to location or residence rather than an institution-related relationship.
+
+    **Output Format:**
+    Use the following JSON-like structure as a guide. Do not alter the double curly braces {{ }} as they are required by the Langchain format.
     {{
         'entities': [...],
         'relationships': [...],
@@ -109,13 +118,14 @@ def process_document(pdf_path: str, doc_class: str):
         'root_entity_name': '...'
     }}
 
-    Below are examples demonstrating the expected behavior:
+    **Detailed Examples:**
 
-    Example 1:
+    ----------------------------------
+    Example 1: Resume Document
     ----------------------------------
     Document:
-    "My name is Alice Johnson. I have a Bachelor of Science in Computer Science from the University of Texas. 
-    I worked at IBM as a Data Scientist. My skill set includes Python, Machine Learning, and Data Analysis."
+    "My name is Alice Johnson. I have a Bachelor of Science in Computer Science from the University of Texas. I worked at IBM as a Data Scientist. My skill set includes Python, Machine Learning, and Data Analysis."
+
     Expected Output:
     {{
         'entities': ['Alice Johnson', 'University of Texas', 'IBM', 'Data Scientist', 'Python', 'Machine Learning', 'Data Analysis'],
@@ -137,17 +147,17 @@ def process_document(pdf_path: str, doc_class: str):
         ],
         'root_entity_name': 'Alice Johnson'
     }}
-    ----------------------------------
 
-    Example 2:
+    ----------------------------------
+    Example 2: Resume with Additional Details
     ----------------------------------
     Resume:
-    "I am Bob Smith, living in San Francisco. I graduated with a Master's in Data Science from Stanford University, 
-    and I have experience at Google as a Machine Learning Engineer. I am proficient in Python, C++, and SQL."
+    "I am Bob Smith, living in San Francisco. I graduated with a Master's in Data Science from Stanford University, and I have experience at Google as a Machine Learning Engineer. I am proficient in Python, C++, and SQL. I also received the 'Innovator Award' for my contributions to AI research."
+
     Expected Output:
     {{
-        'entities': ['Bob Smith', 'San Francisco', 'Stanford University', 'Google', 'Machine Learning Engineer', 'Python', 'C++', 'SQL'],
-        'relationships': ['LIVES_IN', 'HAS_EDUCATION', 'HAS_EXPERIENCE', 'HAS_SKILLS', 'HAS_PUBLICATIONS'],
+        'entities': ['Bob Smith', 'San Francisco', 'Stanford University', 'Google', 'Machine Learning Engineer', 'Python', 'C++', 'SQL', 'Innovator Award', 'AI Research'],
+        'relationships': ['LIVES_IN', 'HAS_EDUCATION', 'HAS_EXPERIENCE', 'HAS_SKILLS', 'HAS_AWARDS', 'HAS_RESEARCH'],
         'cypher_queries': [
             "MERGE (person:Entity {{name: 'Bob Smith'}}) RETURN person",
             "MERGE (city:Entity {{name: 'San Francisco'}}) RETURN city",
@@ -157,7 +167,8 @@ def process_document(pdf_path: str, doc_class: str):
             "MERGE (skill1:Entity {{name: 'Python'}}) RETURN skill1",
             "MERGE (skill2:Entity {{name: 'C++'}}) RETURN skill2",
             "MERGE (skill3:Entity {{name: 'SQL'}}) RETURN skill3",
-            "MERGE (publication:Entity {{name: 'Machine Learning Engineer'}}) RETURN publication",
+            "MERGE (award:Entity {{name: 'Innovator Award'}}) RETURN award",
+            "MERGE (research:Entity {{name: 'AI Research'}}) RETURN research",
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (city:Entity {{name: 'San Francisco'}}) MERGE (person)-[:LIVES_IN]->(city)",
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (university:Entity {{name: 'Stanford University'}}) MERGE (person)-[:HAS_EDUCATION]->(university)",
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (company:Entity {{name: 'Google'}}) MERGE (person)-[:HAS_EXPERIENCE]->(company)",
@@ -165,82 +176,110 @@ def process_document(pdf_path: str, doc_class: str):
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (skill1:Entity {{name: 'Python'}}) MERGE (person)-[:HAS_SKILLS]->(skill1)",
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (skill2:Entity {{name: 'C++'}}) MERGE (person)-[:HAS_SKILLS]->(skill2)",
             "MATCH (person:Entity {{name: 'Bob Smith'}}), (skill3:Entity {{name: 'SQL'}}) MERGE (person)-[:HAS_SKILLS]->(skill3)",
-            "MATCH (person:Entity {{name: 'Bob Smith'}}), (publication:Entity {{name: 'Machine Learning Engineer'}}) MERGE (person)-[:HAS_PUBLICATIONS]->(publication)"
+            "MATCH (person:Entity {{name: 'Bob Smith'}}), (award:Entity {{name: 'Innovator Award'}}) MERGE (person)-[:HAS_AWARDS]->(award)",
+            "MATCH (person:Entity {{name: 'Bob Smith'}}), (research:Entity {{name: 'AI Research'}}) MERGE (person)-[:HAS_RESEARCH]->(research)"
         ],
         'root_entity_name': 'Bob Smith'
     }}
-    
-    Example 3:
-    Science Article:
-    "The article discusses the latest advancements in robotics, including the development of a new robotic arm that can perform complex tasks."
+
+    ----------------------------------
+    Example 3: Science Article
+    ----------------------------------
+    Document:
+    "The article discusses the latest advancements in robotics, including the development of a new robotic arm that can perform complex tasks. The research highlights experimental methodologies and significant improvements in precision."
+
     Expected Output:
     {{
-        'entities': ['Robotics', 'Robotic Arm', 'Complex Tasks'],
-        'relationships': ['HAS_ADVANCES', 'HAS_DEVELOPMENT'],
+        'entities': ['Robotics', 'Robotic Arm', 'Complex Tasks', 'Experimental Methodologies', 'Precision Improvements'],
+        'relationships': ['HAS_ADVANCES', 'HAS_DEVELOPMENT', 'HAS_METHODOLOGY', 'HAS_RESULTS'],
         'cypher_queries': [
             "MERGE (article:Entity {{name: 'Robotics Article'}}) RETURN article",
             "MERGE (advancement:Entity {{name: 'Robotics'}}) RETURN advancement",
             "MERGE (arm:Entity {{name: 'Robotic Arm'}}) RETURN arm",
-            "MERGE (task:Entity {{name: 'Complex Tasks'}}) RETURN task"
+            "MERGE (task:Entity {{name: 'Complex Tasks'}}) RETURN task",
+            "MERGE (method:Entity {{name: 'Experimental Methodologies'}}) RETURN method",
+            "MERGE (result:Entity {{name: 'Precision Improvements'}}) RETURN result",
+            "MATCH (article:Entity {{name: 'Robotics Article'}}), (advancement:Entity {{name: 'Robotics'}}) MERGE (article)-[:HAS_ADVANCES]->(advancement)",
+            "MATCH (article:Entity {{name: 'Robotics Article'}}), (arm:Entity {{name: 'Robotic Arm'}}) MERGE (article)-[:HAS_DEVELOPMENT]->(arm)",
+            "MATCH (article:Entity {{name: 'Robotics Article'}}), (method:Entity {{name: 'Experimental Methodologies'}}) MERGE (article)-[:HAS_METHODOLOGY]->(method)",
+            "MATCH (article:Entity {{name: 'Robotics Article'}}), (result:Entity {{name: 'Precision Improvements'}}) MERGE (article)-[:HAS_RESULTS]->(result)"
         ],
         'root_entity_name': 'Robotics'
     }}
-    
-    Example 4:
-    Technical Document:
-    "This Handbook is a comprehensive guide to the latest advancements in AI, including the development of a new AI model that can perform complex tasks.
-    AI is the future of the world."
+
+    ----------------------------------
+    Example 4: Technical Document
+    ----------------------------------
+    Document:
+    "This Handbook is a comprehensive guide to the latest advancements in AI, including the development of a new AI model that can perform complex tasks. AI is the future of the world, influencing industries and transforming societies."
+
     Expected Output:
     {{
-        'entities': ['AI', 'AI Model', 'Complex Tasks', 'Future of the World'],
-        'relationships': ['HAS_ADVANCES', 'HAS_DEVELOPMENT', 'HAS_IMPACT'],
+        'entities': ['AI', 'AI Model', 'Complex Tasks', 'Future of the World', 'Industries', 'Societies'],
+        'relationships': ['HAS_ADVANCES', 'HAS_DEVELOPMENT', 'HAS_IMPACT', 'HAS_APPLICATION'],
         'cypher_queries': [
             "MERGE (document:Entity {{name: 'Handbook'}}) RETURN document",
-            "MERGE (advancement:Entity {{name: 'AI'}}) RETURN advancement",
+            "MERGE (topic:Entity {{name: 'AI'}}) RETURN topic",
             "MERGE (model:Entity {{name: 'AI Model'}}) RETURN model",
-            "MERGE (impact:Entity {{name: 'Future of the World'}}) RETURN impact"
+            "MERGE (task:Entity {{name: 'Complex Tasks'}}) RETURN task",
+            "MERGE (impact:Entity {{name: 'Future of the World'}}) RETURN impact",
+            "MERGE (industry:Entity {{name: 'Industries'}}) RETURN industry",
+            "MERGE (society:Entity {{name: 'Societies'}}) RETURN society",
+            "MATCH (document:Entity {{name: 'Handbook'}}), (topic:Entity {{name: 'AI'}}) MERGE (document)-[:HAS_ADVANCES]->(topic)",
+            "MATCH (document:Entity {{name: 'Handbook'}}), (model:Entity {{name: 'AI Model'}}) MERGE (document)-[:HAS_DEVELOPMENT]->(model)",
+            "MATCH (document:Entity {{name: 'Handbook'}}), (task:Entity {{name: 'Complex Tasks'}}) MERGE (document)-[:HAS_DEVELOPMENT]->(task)",
+            "MATCH (document:Entity {{name: 'Handbook'}}), (impact:Entity {{name: 'Future of the World'}}) MERGE (document)-[:HAS_IMPACT]->(impact)",
+            "MATCH (document:Entity {{name: 'Handbook'}}), (industry:Entity {{name: 'Industries'}}) MERGE (document)-[:HAS_APPLICATION]->(industry)",
+            "MATCH (document:Entity {{name: 'Handbook'}}), (society:Entity {{name: 'Societies'}}) MERGE (document)-[:HAS_APPLICATION]->(society)"
         ],
         'root_entity_name': 'AI'
     }}
-    
+
     ----------------------------------
-
-    Now, using the same approach and the same output format structure, parse the following document text into its relevant entities, relationships, 
-    and cypher queries. Make sure to assign the 'root_entity_name' to the main node that is the most representative of the document. 
-    Focus on the following categories (if present) to derive entities and relationships: 
-    
-    FOR RESUME:
-    - Person Name
-    - Education (Universities or Degrees)
-    - Work Experience (Companies and Job Titles)
-    - Skills (Technical or Domain-Specific)
-    - Location or Residence
-    - Others (Certifications, Awards, etc.)
-    
-    FOR SCIENCE ARTICLE:
-    - Topic
-    - Subject
-    - Research
-    - Methodology
-    - Results
-    - Conclusion
-
-    FOR TECHNICAL DOCUMENT:
-    - Topic
-    - Technical Details
-    - How it works
-    - How it is used
-    - Impact
-
+    Example 5: Mixed Technical and Research Document
+    ----------------------------------
     Document:
-    {text}
-    
-    Document Class:
-    {doc_class}
-    
-    All Relationships:
-    {all_relationships}
+    "Dr. Emily Clark presents a whitepaper on quantum computing. The document outlines the principles of quantum mechanics, details the design of a quantum processor, and discusses the potential impact on cybersecurity and data encryption. It also covers experimental results from recent trials."
+
+    Expected Output:
+    {{
+        'entities': ['Dr. Emily Clark', 'Quantum Computing', 'Quantum Mechanics', 'Quantum Processor', 'Cybersecurity', 'Data Encryption', 'Experimental Results'],
+        'relationships': ['HAS_AUTHORED', 'HAS_TOPICS', 'HAS_DEVELOPMENT', 'HAS_IMPACT', 'HAS_RESULTS'],
+        'cypher_queries': [
+            "MERGE (document:Entity {{name: 'Whitepaper on Quantum Computing'}}) RETURN document",
+            "MERGE (author:Entity {{name: 'Dr. Emily Clark'}}) RETURN author",
+            "MERGE (topic:Entity {{name: 'Quantum Computing'}}) RETURN topic",
+            "MERGE (mechanics:Entity {{name: 'Quantum Mechanics'}}) RETURN mechanics",
+            "MERGE (processor:Entity {{name: 'Quantum Processor'}}) RETURN processor",
+            "MERGE (cyber:Entity {{name: 'Cybersecurity'}}) RETURN cyber",
+            "MERGE (encryption:Entity {{name: 'Data Encryption'}}) RETURN encryption",
+            "MERGE (results:Entity {{name: 'Experimental Results'}}) RETURN results",
+            "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (author:Entity {{name: 'Dr. Emily Clark'}}) MERGE (document)-[:HAS_AUTHORED]->(author)",
+            "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (topic:Entity {{name: 'Quantum Computing'}}) MERGE (document)-[:HAS_TOPICS]->(topic)",
+            "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (mechanics:Entity {{name: 'Quantum Mechanics'}}) MERGE (document)-[:HAS_TOPICS]->(mechanics)",
+            "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (processor:Entity {{name: 'Quantum Processor'}}) MERGE (document)-[:HAS_DEVELOPMENT]->(processor)",
+            "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (cyber:Entity {{name: 'Cybersecurity'}}) MERGE (document)-[:HAS_IMPACT]->(cyber)",
+            "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (encryption:Entity {{name: 'Data Encryption'}}) MERGE (document)-[:HAS_IMPACT]->(encryption)",
+            "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (results:Entity {{name: 'Experimental Results'}}) MERGE (document)-[:HAS_RESULTS]->(results)"
+        ],
+        'root_entity_name': 'Quantum Computing'
+    }}
+
+    ----------------------------------
+    Instructions for Processing the Input:
+    Now, using the same approach and output format structure shown in the examples above, parse the following inputs:
+
+    - **Document:** {text}
+    - **Document Class:** {doc_class}
+    - **All Relationships:** {all_relationships}
+
+
+    Your output should comprehensively list all relevant entities, determine the appropriate relationships (reusing existing relationship names when applicable), and generate clear, logically connected cypher queries that integrate every extracted entity with the chosen root entity. Make sure no entity is left unconnected.
+
+    Remember:  
+    - Use clear and descriptive relationship names that reflect the nature of the connection (e.g., HAS_EDUCATION, LIVES_IN, HAS_EXPERIENCE, HAS_ADVANCES, HAS_DEVELOPMENT, HAS_IMPACT, etc.).
     """
+
 
     
     prompt = PromptTemplate(template=template)
@@ -304,6 +343,6 @@ def process_document(pdf_path: str, doc_class: str):
     print(f"Finished processing {file_name} into the Neo4j graph.")
 
 if __name__ == "__main__":
-    pdf_path = "docs/Evaluation-of-ECG-based-Recognition-of-Cardiac-Abnormalities-using-Machine-Learning-and-Deep-Learning.pdf" 
-    doc_class = DocClass.SCIENCE_ARTICLE.value
+    pdf_path = "docs/Muhammad Faris Khan CV.pdf" 
+    doc_class = DocClass.RESUME.value
     process_document(pdf_path, doc_class)
