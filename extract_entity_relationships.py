@@ -8,6 +8,7 @@ from langchain_core.exceptions import OutputParserException
 from pydantic import BaseModel, Field
 
 from main import Neo4jConnection
+from neo4j import GraphDatabase
 from enum import Enum
 
 class DocClass(Enum):
@@ -28,16 +29,56 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         for page in reader.pages:
             full_text += page.extract_text()
     return full_text
+    
+def get_all_nodes_and_relationships():
+    query = """MATCH (n) OPTIONAL MATCH (n)-[r]-() RETURN DISTINCT n, r"""
+    
+    NEO4J_URI = os.getenv('NEO4J_URI_1')
+    NEO4J_USERNAME = os.getenv('NEO4J_USERNAME_1')
+    NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD_1')
+    
+    driver = GraphDatabase.driver(
+        NEO4J_URI,
+        auth=(NEO4J_USERNAME, NEO4J_PASSWORD)
+    )
+    
+    nodes = []
+    relationships = []
+    
+    try:
+        with driver.session() as session:
+            result = session.run(query)
 
+            for record in result:
+                node = record["n"]
+                rel = record["r"]
+                nodes.append(node._properties['name'])
+                if rel is not None:
+                    relationships.append(rel.type)
+    finally:
+        driver.close()
+    
+    return nodes, relationships
+
+    
 def process_document(pdf_path: str, doc_class: str):
+    
     full_text = extract_text_from_pdf(pdf_path)
+    
+    all_nodes, all_relationships = get_all_nodes_and_relationships()
     
     llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
     parser = PydanticOutputParser(pydantic_object=ContentSchema)
     
     template = """
-    You are a document parser. You are given a document and the class of the document. You need to extract entities, 
-    relationships, and cypher queries to create a knowledge graph.
+    You are a document parser. You are given a document, class of the document and all relationships list.
+    You need to extract entities, relationships, and cypher queries to create a knowledge graph. 
+    
+    All the previously extracted relationships are provided, so when creating new relationships,
+    make sure that relationship name ,if not present in the all_relationships list. Then only create the relationship with the new name.
+    
+    for e.g HAS_AUTHORED and AUTHORED_BY are the same relationship, so if HAS_AUTHORED is already in the list of all_relationships, 
+    then you should not create AUTHORED_BY, instead you should use HAS_AUTHORED.
 
     Use the following output format as a guide:
     {{
@@ -175,13 +216,16 @@ def process_document(pdf_path: str, doc_class: str):
     
     Document Class:
     {doc_class}
+    
+    All Relationships:
+    {all_relationships}
     """
 
     
     prompt = PromptTemplate(template=template)
     chain = prompt | llm
     
-    response = chain.invoke({"text": full_text, "doc_class": doc_class})
+    response = chain.invoke({"text": full_text, "doc_class": doc_class, "all_relationships": all_relationships})
     response_content = response.content if hasattr(response, 'content') else response
     
     try:
@@ -239,6 +283,6 @@ def process_document(pdf_path: str, doc_class: str):
     print(f"Finished processing {file_name} into the Neo4j graph.")
 
 if __name__ == "__main__":
-    pdf_path = "docs/Evaluation-of-ECG-based-Recognition-of-Cardiac-Abnormalities-using-Machine-Learning-and-Deep-Learning.pdf" 
+    pdf_path = "docs/Motor_Parametric_Calculations_for_Robot.pdf" 
     doc_class = DocClass.SCIENCE_ARTICLE.value
     process_document(pdf_path, doc_class)
