@@ -11,6 +11,10 @@ from main import Neo4jConnection
 from neo4j import GraphDatabase
 from enum import Enum
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 class DocClass(Enum):
     RESUME = "resume"
     SCIENCE_ARTICLE = "science_article"
@@ -77,8 +81,25 @@ def process_document(pdf_path: str, doc_class: str):
     All the previously extracted relationships are provided, so when creating new relationships,
     make sure that relationship name ,if not present in the all_relationships list. Then only create the relationship with the new name.
     
-    for e.g HAS_AUTHORED and AUTHORED_BY are the same relationship, so if HAS_AUTHORED is already in the list of all_relationships, 
+    for e.g 
+    HAS_AUTHORED and AUTHORED_BY are the same relationship,
+    HAS_CONTRIBUTED and AUTHORED_BY are the same relationship,
+    
+    so if HAS_AUTHORED is already in the list of all_relationships, 
     then you should not create AUTHORED_BY, instead you should use HAS_AUTHORED.
+    
+    Similarly, if HAS_CONTRIBUTED is already in the list of all_relationships,
+    then you should not create AUTHORED_BY, instead you should use HAS_CONTRIBUTED.
+    
+    Each node should be connected to the root entity node of the document via a relationship. No node should be left out.
+    
+    Extract as many entities and relationships as possible. Capture all the entities and relationships in the document.
+    
+    The cypher query connecting the nodes should be very logical and should be easy to understand.
+    
+    e.g 
+    NED University should be connected via relationship related to education/institution not by contribution.
+    Karachi should be connected via relationship related to location/residence not by institution.
 
     Use the following output format as a guide:
     {{
@@ -283,6 +304,6 @@ def process_document(pdf_path: str, doc_class: str):
     print(f"Finished processing {file_name} into the Neo4j graph.")
 
 if __name__ == "__main__":
-    pdf_path = "docs/Motor_Parametric_Calculations_for_Robot.pdf" 
+    pdf_path = "docs/Evaluation-of-ECG-based-Recognition-of-Cardiac-Abnormalities-using-Machine-Learning-and-Deep-Learning.pdf" 
     doc_class = DocClass.SCIENCE_ARTICLE.value
     process_document(pdf_path, doc_class)
