@@ -310,74 +310,38 @@ def process_document(pdf_path: str, doc_class: str):
     """
 
     technical_document_prompt = """
-You are a technical document parser. Your primary objective is to analyze the provided technical document and extract key components to construct a knowledge graph.
+You are a technical document parser. Your primary objective is to analyze the provided technical document and extract key components to construct
+a knowledge graph. You will be given the following inputs:
 
-Instructions for Technical Documents:
-- Extract entities such as Document Title, Technical Topics, Key Concepts, Technical Details, Applications, and Impacts.
-- Determine relationships such as HAS_ADVANCES, HAS_DEVELOPMENT, HAS_IMPACT, HAS_APPLICATION, etc.
-- Generate Cypher queries that merge nodes for each entity and create relationships linking them to a root entity (typically the document title or main technical topic).
+- A document text (which will be a technical document).
+- A list of all previously extracted relationships (all_relationships). For first document, all_relationships will be empty.
 
-Examples:
+Your task is to extract:
+1. **Entities:** Key technical concepts, methodologies, technologies, components, specifications, impacts, applications, systems, architectures, etc.
+2. **Relationships:** The connections between these entities. When determining a relationship, check the provided all_relationships list. 
+If a similar relationship already exists (even if represented with different synonyms), use the existing relationship name.  
+- *For example:*  
+    - **HAS_COMPONENT** and **CONTAINS_COMPONENT** are considered the same.  
+    - **HAS_SPECIFICATION** and **HAS_SPECS** are considered the same.  
+    - So, if **HAS_COMPONENT** is already in the all_relationships list, do not create **CONTAINS_COMPONENT**; instead, use **HAS_COMPONENT**.  
+    - Similarly, if **HAS_SPECIFICATION** exists, do not generate **HAS_SPECS**; use **HAS_SPECIFICATION**.
+3. **Cypher Queries:** Generate Cypher queries that logically connect the extracted entities. Each query should:
+- Create or merge nodes for each entity.
+- Create relationships connecting the nodes, ensuring every entity is linked to the designated root entity.
+- Be written in a clear, easy-to-understand manner.
+4. **Root Entity Name:** Identify and assign the main technical concept or system as the root node. Every other entity should be connected directly or indirectly to this root.
 
-----------------------------------
-Example 1: Technical Document
-----------------------------------
-Document:
-"This Handbook is a comprehensive guide to the latest advancements in AI, including the development of a new AI model that can perform complex tasks. AI is the future of the world, influencing industries and transforming societies."
+**Important Guidelines:**
+- **Comprehensiveness:** Extract as many entities and relationships as possible. Ensure no relevant piece of information is omitted.
+- **Context Sensitivity:** 
+- For technical documents, focus on aspects like Technical Systems, Components, Specifications, Technologies, Architectures, Applications, Impacts, Requirements, etc.
+- **Connection Logic:**  
+- Every node must be connected to the root entity node via an appropriate relationship.
+- For example, if "Processing Unit" is mentioned, it should be connected with a relationship related to components or architecture, not one meant for impacts.  
+- Similarly, "Performance Metrics" should be connected with a relationship related to specifications rather than an application-related relationship.
 
-Expected Output:
-{{
-    'entities': ['AI', 'AI Model', 'Complex Tasks', 'Future of the World', 'Industries', 'Societies'],
-    'relationships': ['HAS_ADVANCES', 'HAS_DEVELOPMENT', 'HAS_IMPACT', 'HAS_APPLICATION'],
-    'cypher_queries': [
-        "MERGE (document:Entity {{name: 'Handbook'}}) RETURN document",
-        "MERGE (topic:Entity {{name: 'AI'}}) RETURN topic",
-        "MERGE (model:Entity {{name: 'AI Model'}}) RETURN model",
-        "MERGE (task:Entity {{name: 'Complex Tasks'}}) RETURN task",
-        "MERGE (impact:Entity {{name: 'Future of the World'}}) RETURN impact",
-        "MERGE (industry:Entity {{name: 'Industries'}}) RETURN industry",
-        "MERGE (society:Entity {{name: 'Societies'}}) RETURN society",
-        "MATCH (document:Entity {{name: 'Handbook'}}), (topic:Entity {{name: 'AI'}}) MERGE (document)-[:HAS_ADVANCES]->(topic)",
-        "MATCH (document:Entity {{name: 'Handbook'}}), (model:Entity {{name: 'AI Model'}}) MERGE (document)-[:HAS_DEVELOPMENT]->(model)",
-        "MATCH (document:Entity {{name: 'Handbook'}}), (task:Entity {{name: 'Complex Tasks'}}) MERGE (document)-[:HAS_DEVELOPMENT]->(task)",
-        "MATCH (document:Entity {{name: 'Handbook'}}), (impact:Entity {{name: 'Future of the World'}}) MERGE (document)-[:HAS_IMPACT]->(impact)",
-        "MATCH (document:Entity {{name: 'Handbook'}}), (industry:Entity {{name: 'Industries'}}) MERGE (document)-[:HAS_APPLICATION]->(industry)",
-        "MATCH (document:Entity {{name: 'Handbook'}}), (society:Entity {{name: 'Societies'}}) MERGE (document)-[:HAS_APPLICATION]->(society)"
-    ],
-    'root_entity_name': 'AI'
-}}
-
-----------------------------------
-Example 2: Mixed Technical and Research Document
-----------------------------------
-Document:
-"Dr. Emily Clark presents a whitepaper on quantum computing. The document outlines the principles of quantum mechanics, details the design of a quantum processor, and discusses the potential impact on cybersecurity and data encryption. It also covers experimental results from recent trials."
-
-Expected Output:
-{{
-    'entities': ['Dr. Emily Clark', 'Quantum Computing', 'Quantum Mechanics', 'Quantum Processor', 'Cybersecurity', 'Data Encryption', 'Experimental Results'],
-    'relationships': ['HAS_AUTHORED', 'HAS_TOPICS', 'HAS_DEVELOPMENT', 'HAS_IMPACT', 'HAS_RESULTS'],
-    'cypher_queries': [
-        "MERGE (document:Entity {{name: 'Whitepaper on Quantum Computing'}}) RETURN document",
-        "MERGE (author:Entity {{name: 'Dr. Emily Clark'}}) RETURN author",
-        "MERGE (topic:Entity {{name: 'Quantum Computing'}}) RETURN topic",
-        "MERGE (mechanics:Entity {{name: 'Quantum Mechanics'}}) RETURN mechanics",
-        "MERGE (processor:Entity {{name: 'Quantum Processor'}}) RETURN processor",
-        "MERGE (cyber:Entity {{name: 'Cybersecurity'}}) RETURN cyber",
-        "MERGE (encryption:Entity {{name: 'Data Encryption'}}) RETURN encryption",
-        "MERGE (results:Entity {{name: 'Experimental Results'}}) RETURN results",
-        "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (author:Entity {{name: 'Dr. Emily Clark'}}) MERGE (document)-[:HAS_AUTHORED]->(author)",
-        "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (topic:Entity {{name: 'Quantum Computing'}}) MERGE (document)-[:HAS_TOPICS]->(topic)",
-        "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (mechanics:Entity {{name: 'Quantum Mechanics'}}) MERGE (document)-[:HAS_TOPICS]->(mechanics)",
-        "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (processor:Entity {{name: 'Quantum Processor'}}) MERGE (document)-[:HAS_DEVELOPMENT]->(processor)",
-        "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (cyber:Entity {{name: 'Cybersecurity'}}) MERGE (document)-[:HAS_IMPACT]->(cyber)",
-        "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (encryption:Entity {{name: 'Data Encryption'}}) MERGE (document)-[:HAS_IMPACT]->(encryption)",
-        "MATCH (document:Entity {{name: 'Whitepaper on Quantum Computing'}}), (results:Entity {{name: 'Experimental Results'}}) MERGE (document)-[:HAS_RESULTS]->(results)"
-    ],
-    'root_entity_name': 'Quantum Computing'
-}}
-
-Output Format (JSON-like structure):
+**Output Format:**
+Use the following JSON-like structure as a guide. Do not alter the double curly braces {{ }} as they are required by the Langchain format.
 {{
     'entities': [...],
     'relationships': [...],
@@ -385,8 +349,87 @@ Output Format (JSON-like structure):
     'root_entity_name': '...'
 }}
 
-Ensure every extracted entity is connected to the root entity.
-    """
+**Detailed Examples:**
+
+----------------------------------
+Example 1: Technical Document
+----------------------------------
+Document:
+"The Advanced Robotics Control System (ARCS) is a state-of-the-art platform for industrial automation. The system features a high-performance CPU running at 3.5GHz, integrated motion sensors, and real-time processing capabilities. ARCS has been successfully implemented in manufacturing lines, achieving a 40% increase in production efficiency. The system requires minimal maintenance and operates under standard industrial conditions."
+
+Expected Output:
+{{
+    'entities': ['Advanced Robotics Control System', 'Industrial Automation', 'High-performance CPU', '3.5GHz', 'Motion Sensors', 'Real-time Processing', 'Manufacturing Lines', '40% Production Efficiency', 'Minimal Maintenance', 'Industrial Conditions'],
+    'relationships': ['HAS_APPLICATION', 'HAS_COMPONENT', 'HAS_SPECIFICATION', 'HAS_FEATURE', 'HAS_PERFORMANCE', 'HAS_REQUIREMENT'],
+    'cypher_queries': [
+        "MERGE (system:Entity {{name: 'Advanced Robotics Control System'}}) RETURN system",
+        "MERGE (app:Entity {{name: 'Industrial Automation'}}) RETURN app",
+        "MERGE (cpu:Entity {{name: 'High-performance CPU'}}) RETURN cpu",
+        "MERGE (speed:Entity {{name: '3.5GHz'}}) RETURN speed",
+        "MERGE (sensors:Entity {{name: 'Motion Sensors'}}) RETURN sensors",
+        "MERGE (processing:Entity {{name: 'Real-time Processing'}}) RETURN processing",
+        "MERGE (mfg:Entity {{name: 'Manufacturing Lines'}}) RETURN mfg",
+        "MERGE (efficiency:Entity {{name: '40% Production Efficiency'}}) RETURN efficiency",
+        "MERGE (maintenance:Entity {{name: 'Minimal Maintenance'}}) RETURN maintenance",
+        "MERGE (conditions:Entity {{name: 'Industrial Conditions'}}) RETURN conditions",
+        "MATCH (system:Entity {{name: 'Advanced Robotics Control System'}}), (app:Entity {{name: 'Industrial Automation'}}) MERGE (system)-[:HAS_APPLICATION]->(app)",
+        "MATCH (system:Entity {{name: 'Advanced Robotics Control System'}}), (cpu:Entity {{name: 'High-performance CPU'}}) MERGE (system)-[:HAS_COMPONENT]->(cpu)",
+        "MATCH (system:Entity {{name: 'Advanced Robotics Control System'}}), (speed:Entity {{name: '3.5GHz'}}) MERGE (system)-[:HAS_SPECIFICATION]->(speed)",
+        "MATCH (system:Entity {{name: 'Advanced Robotics Control System'}}), (sensors:Entity {{name: 'Motion Sensors'}}) MERGE (system)-[:HAS_COMPONENT]->(sensors)",
+        "MATCH (system:Entity {{name: 'Advanced Robotics Control System'}}), (processing:Entity {{name: 'Real-time Processing'}}) MERGE (system)-[:HAS_FEATURE]->(processing)",
+        "MATCH (system:Entity {{name: 'Advanced Robotics Control System'}}), (mfg:Entity {{name: 'Manufacturing Lines'}}) MERGE (system)-[:HAS_APPLICATION]->(mfg)",
+        "MATCH (system:Entity {{name: 'Advanced Robotics Control System'}}), (efficiency:Entity {{name: '40% Production Efficiency'}}) MERGE (system)-[:HAS_PERFORMANCE]->(efficiency)",
+        "MATCH (system:Entity {{name: 'Advanced Robotics Control System'}}), (maintenance:Entity {{name: 'Minimal Maintenance'}}) MERGE (system)-[:HAS_REQUIREMENT]->(maintenance)",
+        "MATCH (system:Entity {{name: 'Advanced Robotics Control System'}}), (conditions:Entity {{name: 'Industrial Conditions'}}) MERGE (system)-[:HAS_REQUIREMENT]->(conditions)"
+    ],
+    'root_entity_name': 'Advanced Robotics Control System'
+}}
+
+----------------------------------
+Example 2: Technical Document with Architecture Details
+----------------------------------
+Document:
+"The Cloud-Native Security Platform (CNSP) implements a microservices architecture for enhanced cybersecurity. The system consists of containerized security modules, a distributed database, and AI-powered threat detection. Key features include real-time monitoring, automated response capabilities, and integration with major cloud providers. Testing shows 99.99% uptime and sub-millisecond response times."
+
+Expected Output:
+{{
+    'entities': ['Cloud-Native Security Platform', 'Microservices Architecture', 'Containerized Security Modules', 'Distributed Database', 'AI-powered Threat Detection', 'Real-time Monitoring', 'Automated Response', 'Cloud Provider Integration', '99.99% Uptime', 'Sub-millisecond Response Times'],
+    'relationships': ['HAS_ARCHITECTURE', 'HAS_COMPONENT', 'HAS_FEATURE', 'HAS_CAPABILITY', 'HAS_INTEGRATION', 'HAS_PERFORMANCE'],
+    'cypher_queries': [
+        "MERGE (platform:Entity {{name: 'Cloud-Native Security Platform'}}) RETURN platform",
+        "MERGE (arch:Entity {{name: 'Microservices Architecture'}}) RETURN arch",
+        "MERGE (modules:Entity {{name: 'Containerized Security Modules'}}) RETURN modules",
+        "MERGE (db:Entity {{name: 'Distributed Database'}}) RETURN db",
+        "MERGE (ai:Entity {{name: 'AI-powered Threat Detection'}}) RETURN ai",
+        "MERGE (monitoring:Entity {{name: 'Real-time Monitoring'}}) RETURN monitoring",
+        "MERGE (response:Entity {{name: 'Automated Response'}}) RETURN response",
+        "MERGE (integration:Entity {{name: 'Cloud Provider Integration'}}) RETURN integration",
+        "MERGE (uptime:Entity {{name: '99.99% Uptime'}}) RETURN uptime",
+        "MERGE (latency:Entity {{name: 'Sub-millisecond Response Times'}}) RETURN latency",
+        "MATCH (platform:Entity {{name: 'Cloud-Native Security Platform'}}), (arch:Entity {{name: 'Microservices Architecture'}}) MERGE (platform)-[:HAS_ARCHITECTURE]->(arch)",
+        "MATCH (platform:Entity {{name: 'Cloud-Native Security Platform'}}), (modules:Entity {{name: 'Containerized Security Modules'}}) MERGE (platform)-[:HAS_COMPONENT]->(modules)",
+        "MATCH (platform:Entity {{name: 'Cloud-Native Security Platform'}}), (db:Entity {{name: 'Distributed Database'}}) MERGE (platform)-[:HAS_COMPONENT]->(db)",
+        "MATCH (platform:Entity {{name: 'Cloud-Native Security Platform'}}), (ai:Entity {{name: 'AI-powered Threat Detection'}}) MERGE (platform)-[:HAS_FEATURE]->(ai)",
+        "MATCH (platform:Entity {{name: 'Cloud-Native Security Platform'}}), (monitoring:Entity {{name: 'Real-time Monitoring'}}) MERGE (platform)-[:HAS_CAPABILITY]->(monitoring)",
+        "MATCH (platform:Entity {{name: 'Cloud-Native Security Platform'}}), (response:Entity {{name: 'Automated Response'}}) MERGE (platform)-[:HAS_CAPABILITY]->(response)",
+        "MATCH (platform:Entity {{name: 'Cloud-Native Security Platform'}}), (integration:Entity {{name: 'Cloud Provider Integration'}}) MERGE (platform)-[:HAS_INTEGRATION]->(integration)",
+        "MATCH (platform:Entity {{name: 'Cloud-Native Security Platform'}}), (uptime:Entity {{name: '99.99% Uptime'}}) MERGE (platform)-[:HAS_PERFORMANCE]->(uptime)",
+        "MATCH (platform:Entity {{name: 'Cloud-Native Security Platform'}}), (latency:Entity {{name: 'Sub-millisecond Response Times'}}) MERGE (platform)-[:HAS_PERFORMANCE]->(latency)"
+    ],
+    'root_entity_name': 'Cloud-Native Security Platform'
+}}
+
+Instructions for Processing the Input:
+Now, using the same approach and output format structure shown in the examples above, parse the following inputs:
+
+- **Document:** {text}
+- **All Relationships:** {all_relationships}
+
+Your output should comprehensively list all relevant entities, determine the appropriate relationships (reusing existing relationship names when applicable), and generate clear, logically connected cypher queries that integrate every extracted entity with the chosen root entity. Make sure no entity is left unconnected.
+
+Remember:  
+- Use clear and descriptive relationship names that reflect the nature of the connection (e.g., HAS_COMPONENT, HAS_FEATURE, HAS_SPECIFICATION, HAS_PERFORMANCE, HAS_REQUIREMENT, etc.).
+"""
 
     # Select the appropriate prompt template based on the document class
     if doc_class == DocClass.RESUME.value:
