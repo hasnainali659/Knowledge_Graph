@@ -37,9 +37,9 @@ def extract_text_from_pdf(pdf_path: str) -> str:
 def get_all_nodes_and_relationships():
     query = """MATCH (n) OPTIONAL MATCH (n)-[r]-() RETURN DISTINCT n, r"""
     
-    NEO4J_URI = os.getenv('NEO4J_URI_1')
-    NEO4J_USERNAME = os.getenv('NEO4J_USERNAME_1')
-    NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD_1')
+    NEO4J_URI = os.getenv('NEO4J_URI')
+    NEO4J_USERNAME = os.getenv('NEO4J_USERNAME')
+    NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD')
     
     driver = GraphDatabase.driver(
         NEO4J_URI,
@@ -304,9 +304,9 @@ def process_document(pdf_path: str, doc_class: str):
     print("Relationships extracted:", relationships)
     print("Cypher queries extracted:", cypher_queries)
 
-    NEO4J_URI = os.getenv('NEO4J_URI_1')
-    NEO4J_USERNAME = os.getenv('NEO4J_USERNAME_1')
-    NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD_1')
+    NEO4J_URI = os.getenv('NEO4J_URI')
+    NEO4J_USERNAME = os.getenv('NEO4J_USERNAME')
+    NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD')
 
     neo4j_connection = Neo4jConnection(NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD)
 

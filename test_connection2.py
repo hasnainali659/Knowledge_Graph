@@ -2,9 +2,9 @@ from neo4j import GraphDatabase
 
 import os
 
-NEO4J_URI = os.getenv('NEO4J_URI_1')
-NEO4J_USERNAME = os.getenv('NEO4J_USERNAME_1')
-NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD_1')
+NEO4J_URI = os.getenv('NEO4J_URI')
+NEO4J_USERNAME = os.getenv('NEO4J_USERNAME')
+NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD')
 
 # Test query
 test_query = """
