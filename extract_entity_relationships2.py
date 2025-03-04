@@ -192,41 +192,38 @@ def process_document(pdf_path: str, doc_class: str):
     """
 
     science_article_prompt = """
-You are a science article parser. Your primary objective is to analyze the provided science article and extract key components to construct a knowledge graph.
+    You are a science article parser. Your primary objective is to analyze the provided science article and extract key components to construct
+    a knowledge graph. You will be given the following inputs:
 
-Instructions for Science Articles:
-- Extract entities such as Article Title, Topics, Authors, Affiliations, Research Methods, Results, and Conclusions.
-- Determine relationships such as HAS_ADVANCES, HAS_DEVELOPMENT, HAS_METHODOLOGY, HAS_RESULTS, etc.
-- Generate Cypher queries that merge nodes for each entity and create relationships linking them to a root entity (typically the main topic or article title).
+    - A document text (which will be a science article).
+    - A list of all previously extracted relationships (all_relationships). For first document, all_relationships will be empty.
 
-Examples:
+    Your task is to extract:
+    1. **Entities:** Key research topics, methodologies, findings, authors, institutions, technologies, datasets, metrics, etc.
+    2. **Relationships:** The connections between these entities. When determining a relationship, check the provided all_relationships list. 
+    If a similar relationship already exists (even if represented with different synonyms), use the existing relationship name.  
+    - *For example:*  
+        - **HAS_FINDINGS** and **HAS_RESULTS** are considered the same.  
+        - **HAS_METHOD** and **HAS_METHODOLOGY** are considered the same.  
+        - So, if **HAS_FINDINGS** is already in the all_relationships list, do not create **HAS_RESULTS**; instead, use **HAS_FINDINGS**.  
+        - Similarly, if **HAS_METHOD** exists, do not generate **HAS_METHODOLOGY**; use **HAS_METHOD**.
+    3. **Cypher Queries:** Generate Cypher queries that logically connect the extracted entities. Each query should:
+    - Create or merge nodes for each entity.
+    - Create relationships connecting the nodes, ensuring every entity is linked to the designated root entity.
+    - Be written in a clear, easy-to-understand manner.
+    4. **Root Entity Name:** Identify and assign the main research topic or paper title as the root node. Every other entity should be connected directly or indirectly to this root.
 
-----------------------------------
-Example: Science Article
-----------------------------------
-Document:
-"The article discusses the latest advancements in robotics, including the development of a new robotic arm that can perform complex tasks. The research highlights experimental methodologies and significant improvements in precision."
+    **Important Guidelines:**
+    - **Comprehensiveness:** Extract as many entities and relationships as possible. Ensure no relevant piece of information is omitted.
+    - **Context Sensitivity:** 
+    - For science articles, focus on aspects like Research Topics, Methods, Results, Authors, Institutions, Technologies, Datasets, Metrics, etc.
+    - **Connection Logic:**  
+    - Every node must be connected to the root entity node via an appropriate relationship.
+    - For example, if "Machine Learning Algorithm" is mentioned, it should be connected with a relationship related to methodology or technology, not one meant for results.  
+    - Similarly, "Stanford University" should be connected with a relationship related to affiliation rather than a methodology-related relationship.
 
-Expected Output:
-{{
-    'entities': ['Robotics', 'Robotic Arm', 'Complex Tasks', 'Experimental Methodologies', 'Precision Improvements'],
-    'relationships': ['HAS_ADVANCES', 'HAS_DEVELOPMENT', 'HAS_METHODOLOGY', 'HAS_RESULTS'],
-    'cypher_queries': [
-        "MERGE (article:Entity {{name: 'Robotics Article'}}) RETURN article",
-        "MERGE (advancement:Entity {{name: 'Robotics'}}) RETURN advancement",
-        "MERGE (arm:Entity {{name: 'Robotic Arm'}}) RETURN arm",
-        "MERGE (task:Entity {{name: 'Complex Tasks'}}) RETURN task",
-        "MERGE (method:Entity {{name: 'Experimental Methodologies'}}) RETURN method",
-        "MERGE (result:Entity {{name: 'Precision Improvements'}}) RETURN result",
-        "MATCH (article:Entity {{name: 'Robotics Article'}}), (advancement:Entity {{name: 'Robotics'}}) MERGE (article)-[:HAS_ADVANCES]->(advancement)",
-        "MATCH (article:Entity {{name: 'Robotics Article'}}), (arm:Entity {{name: 'Robotic Arm'}}) MERGE (article)-[:HAS_DEVELOPMENT]->(arm)",
-        "MATCH (article:Entity {{name: 'Robotics Article'}}), (method:Entity {{name: 'Experimental Methodologies'}}) MERGE (article)-[:HAS_METHODOLOGY]->(method)",
-        "MATCH (article:Entity {{name: 'Robotics Article'}}), (result:Entity {{name: 'Precision Improvements'}}) MERGE (article)-[:HAS_RESULTS]->(result)"
-    ],
-    'root_entity_name': 'Robotics'
-}}
-
-Output Format (JSON-like structure):
+    **Output Format:**
+    Use the following JSON-like structure as a guide. Do not alter the double curly braces {{ }} as they are required by the Langchain format.
 {{
     'entities': [...],
     'relationships': [...],
@@ -234,7 +231,82 @@ Output Format (JSON-like structure):
     'root_entity_name': '...'
 }}
 
-Ensure every extracted entity is connected to the root entity.
+    **Detailed Examples:**
+
+    ----------------------------------
+    Example 1: Science Article
+    ----------------------------------
+    Document:
+    "Deep Learning for Climate Change Prediction by Dr. Sarah Chen from MIT. The research introduces a novel neural network architecture for predicting climate patterns. Using historical weather data and advanced GPU processing, the study achieved 95% accuracy in short-term predictions. The findings suggest significant improvements over traditional statistical methods."
+
+    Expected Output:
+    {{
+        'entities': ['Climate Change Prediction', 'Dr. Sarah Chen', 'MIT', 'Neural Network Architecture', 'Historical Weather Data', 'GPU Processing', '95% Accuracy', 'Statistical Methods'],
+        'relationships': ['HAS_AUTHOR', 'HAS_AFFILIATION', 'HAS_METHODOLOGY', 'HAS_DATA', 'HAS_TECHNOLOGY', 'HAS_RESULTS', 'HAS_COMPARISON'],
+        'cypher_queries': [
+            "MERGE (paper:Entity {{name: 'Climate Change Prediction'}}) RETURN paper",
+            "MERGE (author:Entity {{name: 'Dr. Sarah Chen'}}) RETURN author",
+            "MERGE (inst:Entity {{name: 'MIT'}}) RETURN inst",
+            "MERGE (method:Entity {{name: 'Neural Network Architecture'}}) RETURN method",
+            "MERGE (data:Entity {{name: 'Historical Weather Data'}}) RETURN data",
+            "MERGE (tech:Entity {{name: 'GPU Processing'}}) RETURN tech",
+            "MERGE (result:Entity {{name: '95% Accuracy'}}) RETURN result",
+            "MERGE (comp:Entity {{name: 'Statistical Methods'}}) RETURN comp",
+            "MATCH (paper:Entity {{name: 'Climate Change Prediction'}}), (author:Entity {{name: 'Dr. Sarah Chen'}}) MERGE (paper)-[:HAS_AUTHOR]->(author)",
+            "MATCH (paper:Entity {{name: 'Climate Change Prediction'}}), (inst:Entity {{name: 'MIT'}}) MERGE (paper)-[:HAS_AFFILIATION]->(inst)",
+            "MATCH (paper:Entity {{name: 'Climate Change Prediction'}}), (method:Entity {{name: 'Neural Network Architecture'}}) MERGE (paper)-[:HAS_METHODOLOGY]->(method)",
+            "MATCH (paper:Entity {{name: 'Climate Change Prediction'}}), (data:Entity {{name: 'Historical Weather Data'}}) MERGE (paper)-[:HAS_DATA]->(data)",
+            "MATCH (paper:Entity {{name: 'Climate Change Prediction'}}), (tech:Entity {{name: 'GPU Processing'}}) MERGE (paper)-[:HAS_TECHNOLOGY]->(tech)",
+            "MATCH (paper:Entity {{name: 'Climate Change Prediction'}}), (result:Entity {{name: '95% Accuracy'}}) MERGE (paper)-[:HAS_RESULTS]->(result)",
+            "MATCH (paper:Entity {{name: 'Climate Change Prediction'}}), (comp:Entity {{name: 'Statistical Methods'}}) MERGE (paper)-[:HAS_COMPARISON]->(comp)"
+        ],
+        'root_entity_name': 'Climate Change Prediction'
+    }}
+
+    ----------------------------------
+    Example 2: Science Article with Multiple Authors
+    ----------------------------------
+    Document:
+    "Quantum Computing Breakthrough in Error Correction. Authors: Dr. James Wilson (Google AI) and Prof. Lisa Zhang (Stanford). The team developed a novel quantum error correction protocol that achieves 99.9% fidelity. The research utilized a 50-qubit quantum computer and demonstrated superior performance in maintaining quantum coherence. The implications for quantum computing scalability are significant."
+
+    Expected Output:
+    {{
+        'entities': ['Quantum Error Correction', 'Dr. James Wilson', 'Prof. Lisa Zhang', 'Google AI', 'Stanford', 'Error Correction Protocol', '99.9% Fidelity', '50-qubit Quantum Computer', 'Quantum Coherence', 'Quantum Computing Scalability'],
+        'relationships': ['HAS_AUTHOR', 'HAS_AFFILIATION', 'HAS_METHODOLOGY', 'HAS_RESULTS', 'HAS_EQUIPMENT', 'HAS_IMPACT'],
+        'cypher_queries': [
+            "MERGE (paper:Entity {{name: 'Quantum Error Correction'}}) RETURN paper",
+            "MERGE (author1:Entity {{name: 'Dr. James Wilson'}}) RETURN author1",
+            "MERGE (author2:Entity {{name: 'Prof. Lisa Zhang'}}) RETURN author2",
+            "MERGE (inst1:Entity {{name: 'Google AI'}}) RETURN inst1",
+            "MERGE (inst2:Entity {{name: 'Stanford'}}) RETURN inst2",
+            "MERGE (method:Entity {{name: 'Error Correction Protocol'}}) RETURN method",
+            "MERGE (result:Entity {{name: '99.9% Fidelity'}}) RETURN result",
+            "MERGE (equip:Entity {{name: '50-qubit Quantum Computer'}}) RETURN equip",
+            "MERGE (perf:Entity {{name: 'Quantum Coherence'}}) RETURN perf",
+            "MERGE (impact:Entity {{name: 'Quantum Computing Scalability'}}) RETURN impact",
+            "MATCH (paper:Entity {{name: 'Quantum Error Correction'}}), (author1:Entity {{name: 'Dr. James Wilson'}}) MERGE (paper)-[:HAS_AUTHOR]->(author1)",
+            "MATCH (paper:Entity {{name: 'Quantum Error Correction'}}), (author2:Entity {{name: 'Prof. Lisa Zhang'}}) MERGE (paper)-[:HAS_AUTHOR]->(author2)",
+            "MATCH (paper:Entity {{name: 'Quantum Error Correction'}}), (inst1:Entity {{name: 'Google AI'}}) MERGE (paper)-[:HAS_AFFILIATION]->(inst1)",
+            "MATCH (paper:Entity {{name: 'Quantum Error Correction'}}), (inst2:Entity {{name: 'Stanford'}}) MERGE (paper)-[:HAS_AFFILIATION]->(inst2)",
+            "MATCH (paper:Entity {{name: 'Quantum Error Correction'}}), (method:Entity {{name: 'Error Correction Protocol'}}) MERGE (paper)-[:HAS_METHODOLOGY]->(method)",
+            "MATCH (paper:Entity {{name: 'Quantum Error Correction'}}), (result:Entity {{name: '99.9% Fidelity'}}) MERGE (paper)-[:HAS_RESULTS]->(result)",
+            "MATCH (paper:Entity {{name: 'Quantum Error Correction'}}), (equip:Entity {{name: '50-qubit Quantum Computer'}}) MERGE (paper)-[:HAS_EQUIPMENT]->(equip)",
+            "MATCH (paper:Entity {{name: 'Quantum Error Correction'}}), (perf:Entity {{name: 'Quantum Coherence'}}) MERGE (paper)-[:HAS_RESULTS]->(perf)",
+            "MATCH (paper:Entity {{name: 'Quantum Error Correction'}}), (impact:Entity {{name: 'Quantum Computing Scalability'}}) MERGE (paper)-[:HAS_IMPACT]->(impact)"
+        ],
+        'root_entity_name': 'Quantum Error Correction'
+    }}
+
+    Instructions for Processing the Input:
+    Now, using the same approach and output format structure shown in the examples above, parse the following inputs:
+
+    - **Document:** {text}
+    - **All Relationships:** {all_relationships}
+
+    Your output should comprehensively list all relevant entities, determine the appropriate relationships (reusing existing relationship names when applicable), and generate clear, logically connected cypher queries that integrate every extracted entity with the chosen root entity. Make sure no entity is left unconnected.
+
+    Remember:  
+    - Use clear and descriptive relationship names that reflect the nature of the connection (e.g., HAS_AUTHOR, HAS_AFFILIATION, HAS_METHODOLOGY, HAS_RESULTS, HAS_IMPACT, etc.).
     """
 
     technical_document_prompt = """
