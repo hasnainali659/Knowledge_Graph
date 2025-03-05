@@ -82,7 +82,7 @@ def process_document(pdf_path: str, doc_class: str):
 
 
     resume_prompt = """
-    You are a resume parser. Your primary objective is to analyze the provided resume and extract key components to construct
+    You are a resume parser. That means the document class is resume. Your primary objective is to analyze the provided resume and extract key components to construct
     a knowledge graph. You will be given the following inputs:
 
     - A document text (which will be a resume).
@@ -512,7 +512,7 @@ def process_document(pdf_path: str, doc_class: str):
 
 
 if __name__ == "__main__":
-    pdf_path = "docs/Muhammad Faris Khan CV.pdf"
+    pdf_path = "docs/Bob Smith 1.pdf"
     doc_class = (
         DocClass.RESUME.value
     )  # Change this to SCIENCE_ARTICLE or TECHNICAL_DOCUMENT as needed
