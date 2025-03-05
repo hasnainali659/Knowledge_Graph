@@ -20,14 +20,11 @@ class DocClass(Enum):
     SCIENCE_ARTICLE = "science_article"
     TECHNICAL_DOCUMENT = "technical_document"
 
-# A minimal schema for demonstration.
-# You can expand or customize as needed.
 class ContentSchema(BaseModel):
     root_entity_name: str = Field(
         default="", description="The name of the root entity (the person)."
     )
-    # For simplicity, let's assume we have direct lists for each category.
-    # You could also parse them from a single 'entities' list if you prefer.
+
     skills: list[str] = Field(default=[])
     experience: list[str] = Field(default=[])
     education: list[str] = Field(default=[])
@@ -64,7 +61,7 @@ def get_all_nodes_and_relationships():
             for record in result:
                 node = record["n"]
                 rel = record["r"]
-                # Node property "name" is used if present
+
                 if node and "name" in node._properties:
                     nodes.append(node._properties["name"])
                 if rel is not None:
@@ -75,17 +72,13 @@ def get_all_nodes_and_relationships():
     return nodes, relationships
 
 def process_document(pdf_path: str, doc_class: str):
-    # 1. Extract text
+
     full_text = extract_text_from_pdf(pdf_path)
     
-    # 2. (Optional) Retrieve existing relationships if you want to reuse them
     all_nodes, all_relationships = get_all_nodes_and_relationships()
 
-    # 3. Call LLM to parse the resume (replace with your actual prompt)
     llm = ChatOpenAI(model="gpt-4o", temperature=0.1)
     
-    # Example prompt: minimal, just to illustrate usage.
-    # You can customize as needed.
     prompt_text = f"""
     You are a resume parser. Extract the person's name as root_entity_name,
     plus a list of skills, experience, education, certifications, publications,
@@ -108,11 +101,9 @@ def process_document(pdf_path: str, doc_class: str):
     try:
         parsed_response = parser.parse(response_content)
     except OutputParserException:
-        # If the model output is malformed, attempt to fix
         new_parser = OutputFixingParser.from_llm(parser=parser, llm=llm)
         parsed_response = new_parser.parse(response_content)
 
-    # 4. Extract relevant data from the LLM response
     root_entity_name = parsed_response.root_entity_name
     extracted_skills = parsed_response.skills
     extracted_experience = parsed_response.experience
@@ -129,23 +120,18 @@ def process_document(pdf_path: str, doc_class: str):
     print("Publications extracted:", extracted_publications)
     print("Personal details extracted:", extracted_personal_details)
 
-    # 5. Write to Neo4j
     NEO4J_URI = os.getenv("NEO4J_URI")
     NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")
     NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 
     neo4j_connection = Neo4jConnection(NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD)
     
-    # -- (A) Create the top-level structure --
-
-    # A1. Create the RESUME node
     query = f"""
     MERGE (r:RESUME {{ name: 'resume' }})
     RETURN r
     """
     neo4j_connection.write_transaction(query)
 
-    # A2. Create the FILE node (using the PDF file name)
     file_name = os.path.basename(pdf_path)
     query = """
     MERGE (f:FILE {name: $file_name})
@@ -153,7 +139,6 @@ def process_document(pdf_path: str, doc_class: str):
     """
     neo4j_connection.write_transaction(query, {"file_name": file_name})
 
-    # A3. Connect (RESUME) -[:HAS_FILE]-> (FILE)
     query = """
     MATCH (r:RESUME { name: 'resume' }), (f:FILE { name: $file_name })
     MERGE (r)-[:HAS_FILE]->(f)
@@ -161,7 +146,6 @@ def process_document(pdf_path: str, doc_class: str):
     """
     neo4j_connection.write_transaction(query, {"file_name": file_name})
 
-    # A4. Create the Person node (root entity) & connect to File
     query = """
     MERGE (p:PERSON { name: $root_entity_name })
     RETURN p
@@ -177,8 +161,7 @@ def process_document(pdf_path: str, doc_class: str):
         query, {"file_name": file_name, "root_entity_name": root_entity_name}
     )
 
-    # -- (B) Create the 5 (or 6) category nodes and connect them to Person --
-    # You can adapt the names as you like. 
+
     categories = [
         ("SKILLS", "HAS_SKILLS", extracted_skills),
         ("EXPERIENCE", "HAS_EXPERIENCE", extracted_experience),
@@ -189,15 +172,13 @@ def process_document(pdf_path: str, doc_class: str):
     ]
 
     for (cat_label, cat_rel, items_list) in categories:
-        # B1. Create category node (e.g., :SKILLS {name:'skills'})
-        cat_node_name = cat_label.lower()  # e.g. "skills"
+        cat_node_name = cat_label.lower()
         query = f"""
         MERGE (c:{cat_label} {{ name: $cat_node_name }})
         RETURN c
         """
         neo4j_connection.write_transaction(query, {"cat_node_name": cat_node_name})
 
-        # B2. Connect (PERSON) -[:HAS_xxx]-> (Category)
         query = f"""
         MATCH (p:PERSON {{ name: $root_entity_name }}),
               (c:{cat_label} {{ name: $cat_node_name }})
@@ -209,16 +190,13 @@ def process_document(pdf_path: str, doc_class: str):
             {"root_entity_name": root_entity_name, "cat_node_name": cat_node_name},
         )
 
-        # B3. For each extracted item in this category, create a node & connect
         for item in items_list:
-            # create the item node
             query = """
             MERGE (i:ITEM { name: $item_name })
             RETURN i
             """
             neo4j_connection.write_transaction(query, {"item_name": item})
 
-            # connect item to category node
             query = f"""
             MATCH (c:{cat_label} {{ name: $cat_node_name }}),
                   (i:ITEM {{ name: $item_name }})
