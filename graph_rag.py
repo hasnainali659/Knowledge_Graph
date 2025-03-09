@@ -46,7 +46,7 @@ def get_all_nodes_and_relationships(file_names_list):
         for file_name in file_names_list:
             # Updated query to get more complete subgraph with increased depth
             query = f"""MATCH (target:FILE {{ name: "{file_name}" }})
-                    CALL apoc.path.subgraphAll(target, {{ maxLevel: 3 }}) YIELD nodes, relationships
+                    CALL apoc.path.subgraphAll(target, {{ maxLevel: 6 }}) YIELD nodes, relationships
                     RETURN nodes, relationships"""
             print(f"Executing query for file: {file_name}")
             result = session.run(query)
@@ -333,9 +333,10 @@ file_names_list: {file_names_list}
 Use this query as an example to generate the Cypher statement.
 ```
 MATCH (target:FILE {{name: $fileName}})
-CALL apoc.path.subgraphAll(target, {{maxLevel: 3}}) YIELD nodes, relationships
+CALL apoc.path.subgraphAll(target, {{maxLevel: 6}}) YIELD nodes, relationships
 WITH nodes, relationships
 UNWIND nodes as node
+WITH node
 WHERE node.property = 'value'
 RETURN node.name, node.property
 ```
