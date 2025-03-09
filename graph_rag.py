@@ -41,16 +41,57 @@ def get_all_nodes_and_relationships(file_names_list):
         nodes_list = []
         relationships_list = []
         for file_name in file_names_list:
-            query = f"""MATCH (target:File {{ name: "{file_name}" }})
+            # Updated FILE to match the exact case shown in the database screenshot
+            query = f"""MATCH (target:FILE {{ name: "{file_name}" }})
                     CALL apoc.path.subgraphAll(target, {{ maxLevel: 2 }}) YIELD nodes, relationships
                     RETURN nodes, relationships"""
+            print(f"Executing query for file: {file_name}")
             result = session.run(query)
+            
+            record_count = 0
             for record in result:
-                nodes = [node._properties["name"] for node in record[0]]
-                nodes_list.extend(nodes)
-                relationship_string = [relationship_to_string(relationships) for relationships in record[1]]
-                relationships_list.extend(relationship_string)
-
+                record_count += 1
+                # Add a try-except block to debug potential property access issues
+                try:
+                    nodes = []
+                    for node in record[0]:
+                        try:
+                            # Make sure the node has a name property
+                            if "name" in node._properties:
+                                nodes.append(node._properties["name"])
+                            else:
+                                # If not, add the node with its available properties
+                                print(f"Node without 'name' property found: {node._properties}")
+                                prop_str = str(next(iter(node._properties.values()))) if node._properties else "unnamed_node"
+                                nodes.append(prop_str)
+                        except Exception as e:
+                            print(f"Error accessing node properties: {e}")
+                    
+                    nodes_list.extend(nodes)
+                    
+                    relationship_strings = []
+                    for rel in record[1]:
+                        try:
+                            rel_str = relationship_to_string(rel)
+                            relationship_strings.append(rel_str)
+                        except Exception as e:
+                            print(f"Error converting relationship to string: {e}")
+                    
+                    relationships_list.extend(relationship_strings)
+                except Exception as e:
+                    print(f"Error processing record: {e}")
+            
+            if record_count == 0:
+                print(f"No records found for file: {file_name}")
+                
+                # Try alternative query without APOC to see if the file node exists
+                check_query = f"""MATCH (target:FILE {{ name: "{file_name}" }})
+                                RETURN target"""
+                check_result = session.run(check_query)
+                if not check_result.peek():
+                    print(f"File node with name '{file_name}' does not exist in database!")
+        
+        print(f"Retrieved {len(nodes_list)} nodes and {len(relationships_list)} relationships")
         return nodes_list, relationships_list
 
 def get_relationships_for_node(node_name):
@@ -93,7 +134,7 @@ def extract_main_node_chain(query, nodes):
     return chain.invoke({"query": query, "nodes": nodes})
     
 def rephrase_query_chain(query, nodes, relationships):
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = ChatOpenAI(model="gpt-4o", temperature=0.5)
     prompt = PromptTemplate(
         template=""" You are a highly skilled assistant that specializes in rephrasing user queries using the list of nodes and the 
         list of relationships in the graph database. 
@@ -112,14 +153,14 @@ def rephrase_query_chain(query, nodes, relationships):
     return chain.invoke({"nodes": nodes, "relationships": relationships, "query": query})
 
 graph = Neo4jGraph(
-    url=os.getenv("NEO4J_URI_1"),
-    username=os.getenv("NEO4J_USERNAME_1"),
-    password=os.getenv("NEO4J_PASSWORD_1")
+    url=os.getenv("NEO4J_URI"),
+    username=os.getenv("NEO4J_USERNAME"),
+    password=os.getenv("NEO4J_PASSWORD")
 )
 
 driver = GraphDatabase.driver(
-    os.getenv("NEO4J_URI_1"),
-    auth=(os.getenv("NEO4J_USERNAME_1"), os.getenv("NEO4J_PASSWORD_1"))
+    os.getenv("NEO4J_URI"),
+    auth=(os.getenv("NEO4J_USERNAME"), os.getenv("NEO4J_PASSWORD"))
 )
 
 schema = graph.get_schema
@@ -134,7 +175,7 @@ Use the file name list to filter the nodes and relationships.
 file_names_list: {file_names_list}
 
 Use this query as an example to generate the Cypher statement.
-"MATCH (target:File {{name: 'Evan Patel 1.pdf'}})
+"MATCH (target:FILE {{name: 'Evan Patel 1.pdf'}})
 CALL apoc.path.subgraphAll(target, {{maxLevel: 6}}) YIELD nodes, relationships
 RETURN nodes, relationships"
 
@@ -159,7 +200,7 @@ question_prompt = PromptTemplate(
     input_variables=["schema", "query", "file_names_list"] 
 )
 
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
+llm = ChatOpenAI(model="gpt-4o", temperature=0.5)
 
 qa = GraphCypherQAChain.from_llm(
     llm=llm,
@@ -170,10 +211,17 @@ qa = GraphCypherQAChain.from_llm(
     return_intermediate_steps=True
 )
 
-file_names_list = ['Evan Patel 1.pdf', 
-                   'George Kim 1.pdf',
-                   'Evaluation-of-ECG-based-Recognition-of-Cardiac-Abnormalities-using-Machine-Learning-and-Deep-Learning.pdf',
-                   'Motor_Parametric_Calculations_for_Robot.pdf']
+file_names_list = [
+    'Bob Smith 1.pdf',
+    'Evan Patel 1.pdf',
+    'Fatima_Kiyani.pdf',
+    'Fiona Zhang 1.pdf',
+    'George Kim 1.pdf',
+    'Hasnain Ali Resume.pdf',
+    'Immar_Karim 1.pdf',
+    'Muhammad Faris Khan CV.pdf',
+    'Raza Ali Poonja - Resume.pdf'
+]
 list_of_all_nodes, list_of_all_relationships = get_all_nodes_and_relationships(file_names_list)
 
 while True:
