@@ -20,21 +20,17 @@ def relationship_to_string(relationship):
     """Convert a Neo4j Relationship into a string like:
        (:Entity {name: "Hasnain Ali Poonja"})-[:HAS_EDUCATION]->(:Entity {name: "NUST SMME"})
     """
-    # Extract the start and end nodes
+    
     node1, node2 = relationship.nodes
     
-    # (Optional) Convert labels to a single label string if multiple labels exist
     label1 = list(node1.labels)[0] if node1.labels else ""
     label2 = list(node2.labels)[0] if node2.labels else ""
     
-    # Retrieve the node 'name' property
     name1 = node1["name"] if "name" in node1 else next(iter(node1.items()))[1] if node1 else "unknown"
     name2 = node2["name"] if "name" in node2 else next(iter(node2.items()))[1] if node2 else "unknown"
     
-    # Relationship type
     rel_type = relationship.type
     
-    # Build the string
     return f'(:{label1} {{name: "{name1}"}})-[:{rel_type}]->(:{label2} {{name: "{name2}"}})'
 
 def get_all_nodes_and_relationships(file_names_list):
@@ -44,7 +40,6 @@ def get_all_nodes_and_relationships(file_names_list):
         node_properties = {}
         
         for file_name in file_names_list:
-            # Updated query to get more complete subgraph with increased depth
             query = f"""MATCH (target:FILE {{ name: "{file_name}" }})
                     CALL apoc.path.subgraphAll(target, {{ maxLevel: 6 }}) YIELD nodes, relationships
                     RETURN nodes, relationships"""
@@ -57,23 +52,19 @@ def get_all_nodes_and_relationships(file_names_list):
                 try:
                     for node in record[0]:
                         try:
-                            # Extract node name and properties
                             if "name" in node._properties:
                                 node_name = node._properties["name"]
                                 nodes_list.append(node_name)
                                 
-                                # Store node properties for context enrichment
                                 node_properties[node_name] = {
                                     "labels": list(node.labels),
                                     "properties": node._properties
                                 }
                             else:
-                                # If not, add the node with its available properties
                                 print(f"Node without 'name' property found: {node._properties}")
                                 prop_str = str(next(iter(node._properties.values()))) if node._properties else "unnamed_node"
                                 nodes_list.append(prop_str)
                                 
-                                # Store properties even for nodes without name
                                 node_properties[prop_str] = {
                                     "labels": list(node.labels),
                                     "properties": node._properties
@@ -93,14 +84,12 @@ def get_all_nodes_and_relationships(file_names_list):
             if record_count == 0:
                 print(f"No records found for file: {file_name}")
                 
-                # Try alternative query without APOC to see if the file node exists
                 check_query = f"""MATCH (target:FILE {{ name: "{file_name}" }})
                                 RETURN target"""
                 check_result = session.run(check_query)
                 if not check_result.peek():
                     print(f"File node with name '{file_name}' does not exist in database!")
         
-        # Remove duplicates while preserving order
         nodes_list = list(dict.fromkeys(nodes_list))
         relationships_list = list(dict.fromkeys(relationships_list))
         
@@ -130,7 +119,6 @@ def get_relationships_for_node(node_name):
         print(f"Error connecting to Neo4j: {e}")
         print("Checking Neo4j connection...")
         try:
-            # Test basic connection
             with driver.session() as test_session:
                 test_result = test_session.run("RETURN 1 AS test")
                 test_result.single()
@@ -139,13 +127,12 @@ def get_relationships_for_node(node_name):
             print(f"Neo4j connection test failed: {conn_err}")
             print("Please check that your Neo4j server is running and credentials are correct.")
         
-        # Return empty data as fallback
         return [], []
     
 def extract_main_node_chain(query, nodes, node_properties=None):
+    
     llm = ChatOpenAI(model="gpt-4o", temperature=0)
     
-    # Enhanced prompt with node properties when available
     if node_properties:
         template = """You are a highly skilled assistant that specializes in extracting the main entity from a query.
         You are given a query and a list of all nodes in the graph database with their properties.
@@ -156,7 +143,7 @@ def extract_main_node_chain(query, nodes, node_properties=None):
         
         Return ONLY the exact name of the main node as it appears in the list (no explanations):
         """
-        node_info = "\n".join([f"{node}: {node_properties.get(node, {})}" for node in nodes[:30]])  # Limit to prevent token overflow
+        node_info = "\n".join([f"{node}: {node_properties.get(node, {})}" for node in nodes[:30]])
     else:
         template = """You are a highly skilled assistant that specializes in extracting the main entity from a query.
         You are given a query and a list of all nodes in the graph database.
@@ -181,42 +168,46 @@ def extract_main_node_chain(query, nodes, node_properties=None):
         "node_info" if node_properties else "nodes": node_info
     })
     
-    # Clean up the result to ensure it matches a node in the list
     result = result.strip()
     if result not in nodes:
-        # Try finding closest match if exact match not found
         for node in nodes:
             if result.lower() in node.lower():
                 return node
     
     return result
     
-def rephrase_query_chain(query, nodes, relationships, node_properties=None):
+def rephrase_query_chain(query, main_node, connected_relationships, node_properties=None):
     llm = ChatOpenAI(model="gpt-4o", temperature=0.2)
     
-    # Enhanced prompt that gives better guidance on query reformulation
     template = """You are a knowledge graph query specialist that reformulates natural language questions into precise queries that can be executed against a graph database.
 
     Given the user's original question, transform it into a more specific query that:
-    1. References the exact entity names as they appear in the knowledge graph
-    2. Specifies the types of relationships to look for
-    3. Includes any relevant constraints or conditions
-    4. Is formulated to be answered by traversing the graph structure
+    1. Uses the main node.
+    2. Always use all the connected relationships. Don't include any specific relationship types in the rephrased query.
+    3. Always include the main node in the rephrased query.
 
-    Available nodes in graph: {nodes}
-    Available relationships in graph: {relationships}
+    Main node in graph: {main_node}
+    Connected relationships in graph: {connected_relationships}
     
     Original question: {query}
+    
+    Example query:
+    "What are the skills of raza?"
+    Main node: "Raza Ali Poonja_skills"
+    Connected relationships: "HAS_SKILL", "HAS_VALUE"
+    Reformulated query:
+    "Using the main node Raza Ali Poonja_skills and the connected relationships HAS_SKILL and HAS_VALUE, find the skills of Raza Ali Poonja."
+    
 
     Reformulated query (make it specific but natural language):
     """
     
     chain = prompt = PromptTemplate(
         template=template,
-        input_variables=["nodes", "relationships", "query"]
+        input_variables=["main_node", "connected_relationships", "query"]
     ) | llm
     
-    return chain.invoke({"nodes": nodes[:50], "relationships": relationships[:50], "query": query})
+    return chain.invoke({"main_node": main_node, "connected_relationships": connected_relationships, "query": query})
 
 def generate_optimized_cypher(query, schema, file_names_list):
     """Generate an optimized Cypher query based on the user query and schema"""
@@ -280,12 +271,10 @@ def enrich_results_with_context(results, node_properties):
     Keep your response concise and focused on answering the original question with the enriched information:
     """
     
-    # Extract entity names from the results
     import re
     entity_pattern = r'"([^"]+)"'
     entities = re.findall(entity_pattern, results)
     
-    # Build context from node properties
     context = {}
     for entity in entities:
         if entity in node_properties:
@@ -393,33 +382,27 @@ while True:
     if question in ["/q", "/quit", "/exit", "/stop", "/end", "/close", "/bye", "/goodbye", "/byebye", "/goodbyebye", "/goodbyecya"]:
         break
     
-    # Extract main entity from the query
     main_node = extract_main_node_chain(question, list_of_all_nodes, node_properties)
     print(f"Main entity identified: {main_node}")
     
-    # Get detailed relationship information
     records, relationships = get_relationships_for_node(main_node)
     
-    # Rephrase the query using knowledge of the main node and its relationships
     rephrased_query = rephrase_query_chain(
         question, 
-        list_of_all_nodes, 
-        list_of_all_relationships, 
+        main_node, 
+        relationships, 
         node_properties
     )
     print(f"Rephrased query: {rephrased_query.content}")
     
-    # Try multiple approaches if needed
     retries = 3
     for attempt in range(retries):
         try:
-            # First approach: Use the GraphCypherQAChain
             result = qa.invoke({
                 "query": rephrased_query.content, 
                 "file_names_list": file_names_list
             })
             
-            # Second approach if first one fails: Generate optimized Cypher directly
             if not result["result"] or len(result["result"]) < 10:
                 custom_cypher = generate_optimized_cypher(
                     rephrased_query.content,
@@ -427,7 +410,6 @@ while True:
                     file_names_list
                 )
                 
-                # Execute the custom cypher
                 with driver.session() as session:
                     cypher_result = session.run(custom_cypher)
                     result_data = [dict(record) for record in cypher_result]
@@ -435,7 +417,6 @@ while True:
                     if result_data:
                         result["result"] = str(result_data)
             
-            # Enrich the results with additional context
             enriched_result = enrich_results_with_context(result["result"], node_properties)
             print(enriched_result)
             break
@@ -445,4 +426,4 @@ while True:
                 print(f"Failed after {retries} attempts. Error: {e}")
             else:
                 print(f"Attempt {attempt + 1} failed. Retrying...")
-                time.sleep(1)  # Short delay before retry
+                time.sleep(1)
